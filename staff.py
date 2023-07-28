@@ -21,7 +21,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from fpdf import FPDF
 import uuid
-import pyheif
+# import pyheif
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 hide_streamlit_style = """ <style> #MainMenu {visibility: hidden;} footer {visibility: hidden;} </style> """ 
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
@@ -265,9 +266,8 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
         progress_report = st.empty()
         i = 1
         image_paths = []
-        # Loop over the rows of the dataframe
-        for _, row in dataframe.iterrows():
 
+        def process_row(row):
             # Find the image for this person
             image_id = None
             for name in images_map:
@@ -277,8 +277,8 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
 
             if image_id is None:
                 print(f"No image found for {row['name']}")
-                continue
-
+                return
+            
             # Get the image file from Google Drive
             image_file = drive_service.files().get(fileId=image_id, fields='webContentLink').execute()
             image_url = image_file['webContentLink']
@@ -376,11 +376,6 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
                 with open(f'Images/{row["name"]}.jpg', 'wb') as file:
                     for chunk in image_response.iter_content(chunk_size=8192):
                         file.write(chunk)
-
-                # Add the local path to the image to the list of image paths
-                image_paths.append(f'Images/{row["name"]}.jpg')
-
-
                 print(image_url)
 
                 # Download the image and save it to the 'Images' directory
@@ -388,11 +383,38 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
                 with open(f'Images/{row["name"]}.jpg', 'wb') as handler:
                     handler.write(image_data)
 
+                return f'Images/{row["name"]}.jpg'
+
+
             except Exception as e:
                 print(f"Unable to resolve API call: {e}")
+                return None
 
+        executor = ThreadPoolExecutor(max_workers=10)
+
+        # This list will store our Future objects.
+        futures = []
+
+        # Loop over the rows of the dataframe
+        for _, row in dataframe.iterrows():
+            # Submit a new task to the executor. This will start processing the row in a new thread.
+            future = executor.submit(process_row, row)
+            # Add the Future object to our list.
+            futures.append(future)
+
+        # This list will store the image paths.
+        image_paths = []
+
+        # Use as_completed to iterate over the futures as they complete.
+        for i, future in enumerate(as_completed(futures), 1):
+            # Get the result from the future. This will block until the future is done.
+            image_path = future.result()
+
+            # Add the path to our list.
+            image_paths.append(image_path)
+
+            # Update the progress bar.
             progress_report.text(f"Image progress: {i}/{len(dataframe)}")
-            i+=1
 
         if st.session_state["id"]:
             create_pdf_id(image_paths)
