@@ -115,6 +115,12 @@ if st.session_state['restart']:
     # Create the 'Images' directory
     os.makedirs('Images')
 
+    # Remove the 'Videos' directory if it exists
+    if os.path.exists('Videos'):
+        shutil.rmtree('Videos')
+    # Create the 'Videos' directory
+    os.makedirs('Videos')
+
 # Title of the app
 st.title("Automatic Video and Image Editor")
 
@@ -393,13 +399,13 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
 
         st.write(f"PDF has been uploaded with file ID: {file.get('id')}")
 
-col1, col2 = st.columns(2)
-
 st.subheader("Video Intro Generator")
+
+col1, col2 = st.columns(2)
 
 with col1:
     # Get the ID of the Google Drive folder to upload the videos to
-    folder_id = st.text_input("Enter the ID of the Google Drive folder to upload the videos to:")
+    folder_id = st.text_input("ID of the Google Drive folder to upload the videos to:")
 
 with col2:
     # Text input for the program name
