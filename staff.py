@@ -461,15 +461,14 @@ if uploaded is not None and program:
                     time.sleep(6)
                     status_response = api_instance.get_render(id)
                     status = status_response.response.status
-                
+
                 # Construct the video URL
                 video_url = f"https://cdn.shotstack.io/au/v1/yn3e0zspth/{id}.mp4"
 
                 print(video_url)
-                # Download the video and save locally
-                video_response = requests.get(video_url)
-
-
+                # Download the video
+                video_data = requests.get(video_url).content
+                
                 # Google Drive service setup
                 CLIENT_SECRET_FILE = 'credentials.json'
                 API_NAME = 'drive'
@@ -490,25 +489,31 @@ if uploaded is not None and program:
                 # Build the Google Drive service
                 drive_service = build('drive', 'v3', credentials=creds)
 
-                # Loop over the video files
-                for filename in os.listdir('Videos'):
-                    # Create a media file upload object
-                    media = MediaFileUpload(os.path.join('Videos', filename), mimetype='video/mp4')
+                # Save video data to temporary file
+                video_file = f"{row['name']}.mp4"
+                with open(video_file, 'wb') as f:
+                    f.write(video_data)
 
-                    # Create the file on Google Drive
-                    request = drive_service.files().create(
-                        media_body=media,
-                        body={
-                            'name': filename,
-                            'parents': [folder_id]
-                        }
-                    )
+                # Create a media file upload object
+                media = MediaFileUpload(video_file, mimetype='video/mp4')
 
-                    # Execute the request
-                    file = request.execute()
+                # Create the file on Google Drive
+                request = drive_service.files().create(
+                    media_body=media,
+                    body={
+                        'name': video_file,
+                        'parents': [folder_id]
+                    }
+                )
 
-                    # Print the ID of the uploaded file
-                    st.write('File ID: %s' % file.get('id'))
+                # Execute the request
+                file = request.execute()
+
+                # Print the ID of the uploaded file
+                st.write('File ID: %s' % file.get('id'))
+
+                # Remove temporary file
+                os.remove(video_file)
 
             except Exception as e:
                 st.write(f"Unable to resolve API call: {e}")
