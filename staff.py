@@ -23,6 +23,9 @@ from fpdf import FPDF
 import uuid
 import pyheif
 
+hide_streamlit_style = """ <style> #MainMenu {visibility: hidden;} footer {visibility: hidden;} </style> """ 
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 def create_pdf_id(image_paths):
     pdf = FPDF(orientation = "P", unit = "mm", format = "A4")  # Format of a typical printer paper
     pdf.set_auto_page_break(auto = False)
@@ -125,6 +128,18 @@ if st.session_state['restart']:
 
 # Title of the app
 st.title("Automatic Video and Image Editor")
+st.caption("By Giacomo Pugliese")
+
+with st.expander("Click to view full directions for this site"):
+    st.subheader("IDs and Doortags")
+    st.write("- Select which template you want to make, as well as the google drive folder ids for your photos and intended output destination.")
+    st.write("- If using an intern template, also indicate which program the interns are in")
+    st.write("- Upload a csv with columns PRECISELY titled 'name', 'role' (high school for interns, job description for staff), 'location', and 'class' (you can omit class column if using a staff template)")
+    st.write("- Click 'Process Tags' to being renderings of the chosen template and view them in your destination google drive folder'")
+    st.subheader("Video Intro Generator")
+    st.write("- Enter the intended output google drive folder id, as well as the program name of the students")
+    st.write("- Upload a csv with columns PRECISELY titled 'name', 'school', 'location', and 'class'")
+    st.write("- Click 'Process Videos' to being intro video renderings and view them in your destination google drive folder'")
 
 st.subheader("Google authentication")
 
