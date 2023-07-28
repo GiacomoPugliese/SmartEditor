@@ -392,3 +392,120 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
                                             fields='id').execute()
 
         st.write(f"PDF has been uploaded with file ID: {file.get('id')}")
+
+col1, col2 = st.columns(2)
+
+st.subheader("Video Intro Generator")
+
+with col1:
+    # Get the ID of the Google Drive folder to upload the videos to
+    folder_id = st.text_input("Enter the ID of the Google Drive folder to upload the videos to:")
+
+with col2:
+    # Text input for the program name
+    program = st.text_input("Enter the Program Name:")
+
+# File upload widget
+uploaded= st.file_uploader(label="Upload a CSV file", type=['csv'])
+
+# Configure the Shotstack API
+configuration = shotstack.Configuration(host = "https://api.shotstack.io/v1")
+configuration.api_key['DeveloperKey'] = "ymfTz2fdKw58Oog3dxg5haeUtTOMDfXH4Qp9zlx2"
+
+if uploaded is not None and program:
+    # Load the CSV file into a dataframe
+    dataframe = pd.read_csv(uploaded)
+
+    # Create API client
+    with shotstack.ApiClient(configuration) as api_client:
+        api_instance = edit_api.EditApi(api_client)
+
+        progress_report = st.empty()
+        i = 1
+        # Loop over the rows of the dataframe
+        for _, row in dataframe.iterrows():
+
+            # Create the merge fields for this row
+            merge_fields = [
+                MergeField(find="program_name", replace=program),
+                MergeField(find="name", replace=row['name']),
+                MergeField(find="school", replace=row['school']),
+                MergeField(find="location", replace=row['location']),
+                MergeField(find="class", replace=str(row['class']))
+            ]
+
+            # Create the template render object
+            template = TemplateRender(
+                id = "775d5f85-71f6-4e47-9e10-6c9eb0c0f477",
+                merge = merge_fields
+            )
+
+            try:
+                # Post the template render
+                api_response = api_instance.post_template_render(template)
+
+                # Display the message
+                message = api_response['response']['message']
+                id = api_response['response']['id']
+                st.write(f"{message}")
+
+                # Poll the API until the video is ready
+                status = 'queued'
+                while status == 'queued':
+                    time.sleep(6)
+                    status_response = api_instance.get_render(id)
+                    status = status_response.response.status
+                
+                # Construct the video URL
+                video_url = f"https://cdn.shotstack.io/au/v1/yn3e0zspth/{id}.mp4"
+
+                print(video_url)
+                # Download the video and save locally
+                video_response = requests.get(video_url)
+
+
+                # Google Drive service setup
+                CLIENT_SECRET_FILE = 'credentials.json'
+                API_NAME = 'drive'
+                API_VERSION = 'v3'
+                SCOPES = ['https://www.googleapis.com/auth/drive']
+
+                with open(CLIENT_SECRET_FILE, 'r') as f:
+                    client_info = json.load(f)['web']
+
+                creds_dict = st.session_state['creds']
+                creds_dict['client_id'] = client_info['client_id']
+                creds_dict['client_secret'] = client_info['client_secret']
+                creds_dict['refresh_token'] = creds_dict.get('_refresh_token')
+
+                # Create Credentials from creds_dict
+                creds = Credentials.from_authorized_user_info(creds_dict)
+
+                # Build the Google Drive service
+                drive_service = build('drive', 'v3', credentials=creds)
+
+                # Loop over the video files
+                for filename in os.listdir('Videos'):
+                    # Create a media file upload object
+                    media = MediaFileUpload(os.path.join('Videos', filename), mimetype='video/mp4')
+
+                    # Create the file on Google Drive
+                    request = drive_service.files().create(
+                        media_body=media,
+                        body={
+                            'name': filename,
+                            'parents': [folder_id]
+                        }
+                    )
+
+                    # Execute the request
+                    file = request.execute()
+
+                    # Print the ID of the uploaded file
+                    st.write('File ID: %s' % file.get('id'))
+
+            except Exception as e:
+                st.write(f"Unable to resolve API call: {e}")
+
+            progress_report.text(f"Video progress: {i}/{len(dataframe)}")
+            i+=1
