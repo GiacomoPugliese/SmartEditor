@@ -106,6 +106,8 @@ if 'restart' not in st.session_state:
     st.session_state['creds'] = ""
     st.session_state['intern'] = True
     st.session_state['id'] = True
+    st.session_state['begin_auth'] = False
+    st.session_state['final_auth'] = False
 
 if st.session_state['restart']:
     # Remove the 'Images' directory if it exists
@@ -126,11 +128,6 @@ st.title("Automatic Video and Image Editor")
 
 st.subheader("Google authentication")
 
-def nav_to(url):
-    nav_script = """
-        <meta http-equiv="refresh" content="0; url='%s'">
-    """ % (url)
-    st.write(nav_script, unsafe_allow_html=True)
 try:
     if st.button("Authenticate Google Account"):
         st.session_state['begin_auth'] = True
@@ -210,7 +207,9 @@ uploaded_file = st.file_uploader(label="Upload a CSV file for processing", type=
 configuration = shotstack.Configuration(host = "https://api.shotstack.io/v1")
 configuration.api_key['DeveloperKey'] = "ymfTz2fdKw58Oog3dxg5haeUtTOMDfXH4Qp9zlx2"
 
-if uploaded_file is not None and program_name and upload_folder_id and images_folder_id:
+label_button = st.button("Process Tags")
+
+if uploaded_file is not None and program_name and upload_folder_id and images_folder_id and label_button and st.session_state['final_auth']:
     # Load the CSV file into a dataframe
     dataframe = pd.read_csv(uploaded_file)
 
@@ -262,7 +261,7 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
                     break
 
             if image_id is None:
-                st.write(f"No image found for {row['name']}")
+                print(f"No image found for {row['name']}")
                 continue
 
             # Get the image file from Google Drive
@@ -344,7 +343,7 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
                 # Display the message
                 message = api_response['response']['message']
                 id = api_response['response']['id']
-                st.write(f"{message}")
+                print(f"{message}")
 
                 # Poll the API until the video is ready
                 status = 'queued'
@@ -375,7 +374,7 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
                     handler.write(image_data)
 
             except Exception as e:
-                st.write(f"Unable to resolve API call: {e}")
+                print(f"Unable to resolve API call: {e}")
 
             progress_report.text(f"Image progress: {i}/{len(dataframe)}")
             i+=1
@@ -397,7 +396,8 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
                                             media_body=media,
                                             fields='id').execute()
 
-        st.write(f"PDF has been uploaded with file ID: {file.get('id')}")
+        print(f"PDF has been uploaded with file ID: {file.get('id')}")
+        st.success("PDF Creation Complete!")
 
 st.subheader("Video Intro Generator")
 
@@ -418,7 +418,9 @@ uploaded= st.file_uploader(label="Upload a CSV file", type=['csv'])
 configuration = shotstack.Configuration(host = "https://api.shotstack.io/v1")
 configuration.api_key['DeveloperKey'] = "ymfTz2fdKw58Oog3dxg5haeUtTOMDfXH4Qp9zlx2"
 
-if uploaded is not None and program:
+video_button = st.button("Process Videos")
+
+if uploaded is not None and program and video_button and st.session_state['final_auth']:
     # Load the CSV file into a dataframe
     dataframe = pd.read_csv(uploaded)
 
@@ -453,7 +455,7 @@ if uploaded is not None and program:
                 # Display the message
                 message = api_response['response']['message']
                 id = api_response['response']['id']
-                st.write(f"{message}")
+                print(f"{message}")
 
                 # Poll the API until the video is ready
                 status = 'queued'
@@ -510,13 +512,13 @@ if uploaded is not None and program:
                 file = request.execute()
 
                 # Print the ID of the uploaded file
-                st.write('File ID: %s' % file.get('id'))
+                print('File ID: %s' % file.get('id'))
 
                 # Remove temporary file
                 os.remove(video_file)
-
+                st.success("Video Creation Complete!")
             except Exception as e:
-                st.write(f"Unable to resolve API call: {e}")
+                print(f"Unable to resolve API call: {e}")
 
             progress_report.text(f"Video progress: {i}/{len(dataframe)}")
             i+=1
