@@ -115,6 +115,12 @@ if st.session_state['restart']:
     # Create the 'Images' directory
     os.makedirs('Images')
 
+    # Remove the 'Videos' directory if it exists
+    if os.path.exists('Videos'):
+        shutil.rmtree('Videos')
+    # Create the 'Videos' directory
+    os.makedirs('Videos')
+
 # Title of the app
 st.title("Automatic Video and Image Editor")
 
