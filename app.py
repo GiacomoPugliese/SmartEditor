@@ -351,10 +351,13 @@ if uploaded is not None and program and video_button and st.session_state['final
             # Create the merge fields for this row
             merge_fields = [
                 MergeField(find="program_name", replace=program),
-                MergeField(find="name", replace=row['name']),
-                MergeField(find="school", replace=row['school']),
-                MergeField(find="location", replace=row['location']),
-                MergeField(find="class", replace=str(row['class']))
+                MergeField(find="name", replace=row.get('name', row.get('name1', ''))),
+                MergeField(find="school", replace=row.get('school', row.get('name2', ''))),
+                MergeField(find="location", replace=row.get('location', row.get('name3', ''))),
+                MergeField(find="class", replace='Class of ' + str(row['class']) if 'class' in row else row.get('name4', '')),
+                MergeField(find="name5", replace=row.get('name5', '')),
+                MergeField(find="name6", replace=row.get('name6', '')),
+                MergeField(find="name7", replace=row.get('name7', '')),
             ]
 
             # Create the template render object
@@ -375,7 +378,7 @@ if uploaded is not None and program and video_button and st.session_state['final
                 # Poll the API until the video is ready
                 status = 'queued'
                 while status == 'queued':
-                    time.sleep()
+                    time.sleep(1)
                     status_response = api_instance.get_render(id)
                     status = status_response.response.status
 
@@ -406,8 +409,10 @@ if uploaded is not None and program and video_button and st.session_state['final
                 # Build the Google Drive service
                 drive_service = build('drive', 'v3', credentials=creds)
 
-                # Save video data to temporary file
-                video_file = f"{row['name']}.mp4"
+                name = row.get('name', 'name1')
+                video_file = f"{name}.mp4"
+                time.sleep(6)
+
                 with open(video_file, 'wb') as f:
                     f.write(video_data)
 
@@ -429,11 +434,12 @@ if uploaded is not None and program and video_button and st.session_state['final
                 # Print the ID of the uploaded file
                 print('File ID: %s' % file.get('id'))
 
-                # Remove temporary file
+                time.sleep(3)
+                Remove temporary file
                 os.remove(video_file)
-                st.success("Video Creation Complete!")
             except Exception as e:
                 print(f"Unable to resolve API call: {e}")
 
             progress_report.text(f"Video progress: {i}/{len(dataframe)}")
             i+=1
+    st.success("Videos successfully generated!")
