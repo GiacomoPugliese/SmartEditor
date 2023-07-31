@@ -388,6 +388,7 @@ if uploaded is not None and program and video_button and st.session_state['final
                 print(video_url)
                 # Download the video
                 video_data = requests.get(video_url).content
+                time.sleep(10)
                 
                 # Google Drive service setup
                 CLIENT_SECRET_FILE = 'credentials.json'
@@ -411,10 +412,11 @@ if uploaded is not None and program and video_button and st.session_state['final
 
                 name = row.get('name', 'name1')
                 video_file = f"{name}.mp4"
-                time.sleep(6)
 
                 with open(video_file, 'wb') as f:
                     f.write(video_data)
+
+                time.sleep(10)
 
                 # Create a media file upload object
                 media = MediaFileUpload(video_file, mimetype='video/mp4')
@@ -434,8 +436,8 @@ if uploaded is not None and program and video_button and st.session_state['final
                 # Print the ID of the uploaded file
                 print('File ID: %s' % file.get('id'))
 
-                time.sleep(3)
-                Remove temporary file
+                time.sleep(10)
+                # Remove temporary file
                 os.remove(video_file)
             except Exception as e:
                 print(f"Unable to resolve API call: {e}")
