@@ -2,4 +2,14 @@
 maxUploadSize = 4096
 
 [theme]
-base = "dark"
+# Primary accent for interactive elements
+primaryColor = '#7fb2e6'
+
+# Background color for the main content area
+backgroundColor = '#361618'
+
+# Background color for sidebar and most interactive widgets
+secondaryBackgroundColor = '#561a1e'
+
+# Color used for almost all text
+textColor = '#FFFFFF'
