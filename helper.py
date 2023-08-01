@@ -136,7 +136,7 @@ def process_row(args):
 
                 # Poll the API until the video is ready
                 status = 'queued'
-                while status == 'queued':
+                while status != 'done':
                     time.sleep(0.5)
                     status_response = api_instance.get_render(id)
                     status = status_response.response.status

@@ -377,19 +377,28 @@ if uploaded is not None and program and video_button and st.session_state['final
 
                 # Poll the API until the video is ready
                 status = 'queued'
-                while status == 'queued':
+                while status != 'done':
                     time.sleep(1)
                     status_response = api_instance.get_render(id)
                     status = status_response.response.status
+                    print(status)
 
                 # Construct the video URL
                 video_url = f"https://cdn.shotstack.io/au/v1/yn3e0zspth/{id}.mp4"
 
                 print(video_url)
-                # Download the video
-                video_data = requests.get(video_url).content
-                time.sleep(10)
-                
+
+                name = row.get('name', row.get('name1', 'unnamed'))
+                video_file = f"{name}.mp4"
+
+                # Stream the download and write to file in chunks
+                with requests.get(video_url, stream=True) as r:
+                    with open(video_file, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    r.close()
+
+
                 # Google Drive service setup
                 CLIENT_SECRET_FILE = 'credentials.json'
                 API_NAME = 'drive'
@@ -410,14 +419,6 @@ if uploaded is not None and program and video_button and st.session_state['final
                 # Build the Google Drive service
                 drive_service = build('drive', 'v3', credentials=creds)
 
-                name = row.get('name', 'name1')
-                video_file = f"{name}.mp4"
-
-                with open(video_file, 'wb') as f:
-                    f.write(video_data)
-
-                time.sleep(10)
-
                 # Create a media file upload object
                 media = MediaFileUpload(video_file, mimetype='video/mp4')
 
@@ -430,13 +431,14 @@ if uploaded is not None and program and video_button and st.session_state['final
                     }
                 )
 
+                time.sleep(2)
                 # Execute the request
                 file = request.execute()
+                del media  # Explicitly delete the media object
 
                 # Print the ID of the uploaded file
                 print('File ID: %s' % file.get('id'))
 
-                time.sleep(10)
                 # Remove temporary file
                 os.remove(video_file)
             except Exception as e:
