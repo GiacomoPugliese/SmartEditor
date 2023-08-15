@@ -21,6 +21,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from fpdf import FPDF
 import uuid
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import moviepy.editor as mp
+from moviepy.editor import VideoFileClip, concatenate_videoclips
+
 # import pyheif
 
 # create s3 client
