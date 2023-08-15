@@ -23,6 +23,9 @@ from fpdf import FPDF
 import uuid
 from helper import process_row
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import moviepy.editor as mp
+from moviepy.editor import VideoFileClip, concatenate_videoclips
+
 # import pyheif
 
 hide_streamlit_style = """ <style> #MainMenu {visibility: hidden;} footer {visibility: hidden;} </style> """ 
@@ -354,7 +357,7 @@ if uploaded is not None and program and video_button and st.session_state['final
                 MergeField(find="name", replace=row.get('name', row.get('name1', ''))),
                 MergeField(find="school", replace=row.get('school', row.get('name2', ''))),
                 MergeField(find="location", replace=row.get('location', row.get('name3', ''))),
-                MergeField(find="class", replace='Class of ' + str(row['class']) if 'class' in row else row.get('name4', '')),
+                MergeField(find="class", replace='Class of ' + str(round(row['class'])) if 'class' in row else row.get('name4', '')),
                 MergeField(find="name5", replace=row.get('name5', '')),
                 MergeField(find="name6", replace=row.get('name6', '')),
                 MergeField(find="name7", replace=row.get('name7', '')),
@@ -382,22 +385,41 @@ if uploaded is not None and program and video_button and st.session_state['final
                     status_response = api_instance.get_render(id)
                     status = status_response.response.status
                     print(status)
-
                 # Construct the video URL
                 video_url = f"https://cdn.shotstack.io/au/v1/yn3e0zspth/{id}.mp4"
 
                 print(video_url)
 
                 name = row.get('name', row.get('name1', 'unnamed'))
-                video_file = f"{name}.mp4"
+                video_file = f"Videos/{name}.mp4"
 
-                # Stream the download and write to file in chunks
-                with requests.get(video_url, stream=True) as r:
-                    with open(video_file, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    r.close()
+                # Directly write the downloaded content to a file
+                r = requests.get(video_url)
+                with open(video_file, 'wb') as f:
+                    f.write(r.content)
 
+                # Append intro video to the beginning
+                intro_video_path = "intro_li.mp4"
+                main_video = mp.VideoFileClip(video_file)
+                intro_video = mp.VideoFileClip(intro_video_path)
+
+                print(f"Intro video duration: {intro_video.duration}, fps: {intro_video.fps}")
+                print(f"Main video duration: {main_video.duration}, fps: {main_video.fps}")
+
+                # Concatenate intro and the main video
+                concatenated_video = mp.concatenate_videoclips([intro_video, main_video])
+
+                # Load intro_audio.mp3 and set it as the audio of the final video
+                audio_clip = mp.AudioFileClip("intro_audio.mp3")
+                final_video = concatenated_video.set_audio(audio_clip)
+
+                # Get main video file name and append 'intro_' to the beginning
+                import os
+                main_video_name, main_video_ext = os.path.splitext(os.path.basename(main_video.filename))
+                new_video_name = f"{main_video_name}_intro{main_video_ext}"
+
+                # Write the result to a file.
+                final_video.write_videofile(new_video_name, codec='libx264')  
 
                 # Google Drive service setup
                 CLIENT_SECRET_FILE = 'credentials.json'
@@ -420,13 +442,13 @@ if uploaded is not None and program and video_button and st.session_state['final
                 drive_service = build('drive', 'v3', credentials=creds)
 
                 # Create a media file upload object
-                media = MediaFileUpload(video_file, mimetype='video/mp4')
+                media = MediaFileUpload(new_video_name, mimetype='video/mp4')
 
                 # Create the file on Google Drive
                 request = drive_service.files().create(
                     media_body=media,
                     body={
-                        'name': video_file,
+                        'name': new_video_name,
                         'parents': [folder_id]
                     }
                 )
@@ -440,10 +462,103 @@ if uploaded is not None and program and video_button and st.session_state['final
                 print('File ID: %s' % file.get('id'))
 
                 # Remove temporary file
-                os.remove(video_file)
+                # os.remove(video_file)
+                os.remove(new_video_name)
             except Exception as e:
-                print(f"Unable to resolve API call: {e}")
+                print(f"Unable to generate intro video for {video_file}: {e}")
 
             progress_report.text(f"Video progress: {i}/{len(dataframe)}")
             i+=1
     st.success("Videos successfully generated!")
+    
+# Streamlit UI
+st.subheader("Video Stitcher")
+stitch_folder = st.text_input("ID of the Google Drive folder to upload videos to:")
+
+# File upload widget
+stitch_uploaded = st.file_uploader(label="Upload a CSV file of videos", type=['csv'])
+
+# Get user's local "Videos" directory
+videos_directory = os.path.join(os.path.expanduser('~'), 'Videos')
+
+stitch_button = st.button("Stitch Videos")
+
+if stitch_button and st.session_state['final_auth'] and stitch_folder and stitch_uploaded is not None:
+    df = pd.read_csv(stitch_uploaded)
+    
+    # Google Drive service setup
+    CLIENT_SECRET_FILE = 'credentials.json'
+    API_NAME = 'drive'
+    API_VERSION = 'v3'
+    SCOPES = ['https://www.googleapis.com/auth/drive']
+
+    with open(CLIENT_SECRET_FILE, 'r') as f:
+        client_info = json.load(f)['web']
+
+    creds_dict = st.session_state['creds']
+    creds_dict['client_id'] = client_info['client_id']
+    creds_dict['client_secret'] = client_info['client_secret']
+    creds_dict['refresh_token'] = creds_dict.get('_refresh_token')
+
+    # Create Credentials from creds_dict
+    creds = Credentials.from_authorized_user_info(creds_dict)
+
+    # Build the Google Drive service
+    service = build('drive', 'v3', credentials=creds)
+
+    stitch_progress = st.empty()
+    stitch_progress.text(f"Processing videos: 0/{len(df)}")
+    i = 0
+    for index, row in df.iterrows():
+        i += 1
+        # Download intro video
+        intro_file_id = row['intro'].split("/file/d/")[1].split("/view")[0]
+        request = service.files().get_media(fileId=intro_file_id)
+        intro_filename = os.path.join(videos_directory, f"{row['name']}_intro.mp4")
+        with open(intro_filename, 'wb') as f:
+            downloader = MediaIoBaseDownload(f, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+
+        # Download main video
+        main_file_id = row['main'].split("/file/d/")[1].split("/view")[0]
+        request = service.files().get_media(fileId=main_file_id)
+        main_filename = os.path.join(videos_directory, f"{row['name']}_main.mp4")
+        with open(main_filename, 'wb') as f:
+            downloader = MediaIoBaseDownload(f, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+
+        # Stitch videos together
+        clip1 = VideoFileClip(intro_filename)
+
+        audio_clip = mp.AudioFileClip("intro_audio.mp3")
+        clip1 = clip1.set_audio(audio_clip)
+
+
+        clip2 = VideoFileClip(main_filename)
+        clip3 = VideoFileClip("outro_li.mp4")
+
+        # Assuming clip2 (main video) is your reference for resolution and orientation
+        target_resolution = clip2.size
+
+        clip1_resized = clip1.resize(target_resolution)
+        clip3_resized = clip3.resize(target_resolution)
+
+        final_clip = concatenate_videoclips([clip1_resized, clip2, clip3_resized], method="compose")
+
+        output_filename = os.path.join(videos_directory, f"{row['name']}_final.mp4")
+        final_clip.write_videofile(output_filename)
+
+        # Upload stitched video to Google Drive
+        file_metadata = {
+            'name': os.path.basename(output_filename),
+            'parents': [stitch_folder]
+        }
+        media = MediaFileUpload(output_filename, mimetype='video/mp4')
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        stitch_progress.text(f"Processing videos: {i}/{len(df)}")
+
+
