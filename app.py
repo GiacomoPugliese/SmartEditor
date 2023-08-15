@@ -21,11 +21,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from fpdf import FPDF
 import uuid
-from helper import process_row
+from helper import process_row, process_video
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import moviepy.editor as mp
 from moviepy.editor import VideoFileClip, concatenate_videoclips
-
+import os
+import subprocess
 # import pyheif
 
 hide_streamlit_style = """ <style> #MainMenu {visibility: hidden;} footer {visibility: hidden;} </style> """ 
@@ -485,80 +486,26 @@ stitch_button = st.button("Stitch Videos")
 
 if stitch_button and st.session_state['final_auth'] and stitch_folder and stitch_uploaded is not None:
     df = pd.read_csv(stitch_uploaded)
-    
-    # Google Drive service setup
-    CLIENT_SECRET_FILE = 'credentials.json'
-    API_NAME = 'drive'
-    API_VERSION = 'v3'
-    SCOPES = ['https://www.googleapis.com/auth/drive']
 
+    CLIENT_SECRET_FILE = 'credentials.json'
     with open(CLIENT_SECRET_FILE, 'r') as f:
         client_info = json.load(f)['web']
-
     creds_dict = st.session_state['creds']
     creds_dict['client_id'] = client_info['client_id']
     creds_dict['client_secret'] = client_info['client_secret']
     creds_dict['refresh_token'] = creds_dict.get('_refresh_token')
 
-    # Create Credentials from creds_dict
-    creds = Credentials.from_authorized_user_info(creds_dict)
-
-    # Build the Google Drive service
-    service = build('drive', 'v3', credentials=creds)
+    arguments = [(row, videos_directory, creds_dict, stitch_folder) for _, row in df.iterrows()]
 
     stitch_progress = st.empty()
-    stitch_progress.text(f"Processing videos: 0/{len(df)}")
-    i = 0
-    for index, row in df.iterrows():
-        i += 1
-        # Download intro video
-        intro_file_id = row['intro'].split("/file/d/")[1].split("/view")[0]
-        request = service.files().get_media(fileId=intro_file_id)
-        intro_filename = os.path.join(videos_directory, f"{row['name']}_intro.mp4")
-        with open(intro_filename, 'wb') as f:
-            downloader = MediaIoBaseDownload(f, request)
-            done = False
-            while done is False:
-                status, done = downloader.next_chunk()
+    stitch_progress.text(f"Video Progress: 0/{len(df)}")
+    i=0
+    with ProcessPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(process_video, arg) for arg in arguments]
 
-        # Download main video
-        main_file_id = row['main'].split("/file/d/")[1].split("/view")[0]
-        request = service.files().get_media(fileId=main_file_id)
-        main_filename = os.path.join(videos_directory, f"{row['name']}_main.mp4")
-        with open(main_filename, 'wb') as f:
-            downloader = MediaIoBaseDownload(f, request)
-            done = False
-            while done is False:
-                status, done = downloader.next_chunk()
-
-        # Stitch videos together
-        clip1 = VideoFileClip(intro_filename)
-
-        audio_clip = mp.AudioFileClip("intro_audio.mp3")
-        clip1 = clip1.set_audio(audio_clip)
-
-
-        clip2 = VideoFileClip(main_filename)
-        clip3 = VideoFileClip("outro_li.mp4")
-
-        # Assuming clip2 (main video) is your reference for resolution and orientation
-        target_resolution = clip2.size
-
-        clip1_resized = clip1.resize(target_resolution)
-        clip3_resized = clip3.resize(target_resolution)
-
-        final_clip = concatenate_videoclips([clip1_resized, clip2, clip3_resized], method="compose")
-
-        output_filename = os.path.join(videos_directory, f"{row['name']}_final.mp4")
-        final_clip.write_videofile(output_filename)
-
-        # Upload stitched video to Google Drive
-        file_metadata = {
-            'name': os.path.basename(output_filename),
-            'parents': [stitch_folder]
-        }
-        media = MediaFileUpload(output_filename, mimetype='video/mp4')
-        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        stitch_progress.text(f"Processing videos: {i}/{len(df)}")
+        for future in as_completed(futures):
+            result = future.result()
+            i += 1
+            stitch_progress.text(f"Video Progress: {i}/{len(df)}")
 
 
