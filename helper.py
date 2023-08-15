@@ -24,7 +24,8 @@ import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import moviepy.editor as mp
 from moviepy.editor import VideoFileClip, concatenate_videoclips
-
+import os
+import subprocess
 # import pyheif
 
 # create s3 client
@@ -190,3 +191,74 @@ def process_row(args):
             pass
         return None
     
+def process_video(data):
+    row, videos_directory, creds_dict, stitch_folder = data
+
+    creds = Credentials.from_authorized_user_info(creds_dict)
+    service = build('drive', 'v3', credentials=creds)
+
+    # Download intro video
+    intro_file_id = row['intro'].split("/file/d/")[1].split("/view")[0]
+    request = service.files().get_media(fileId=intro_file_id)
+    intro_filename = os.path.join(videos_directory, f"{row['name']}_intro.mp4")
+    with open(intro_filename, 'wb') as f:
+        downloader = MediaIoBaseDownload(f, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
+    # Download main video
+    main_file_id = row['main'].split("/file/d/")[1].split("/view")[0]
+    request = service.files().get_media(fileId=main_file_id)
+    main_filename = os.path.join(videos_directory, f"{row['name']}_main.mp4")
+    with open(main_filename, 'wb') as f:
+        downloader = MediaIoBaseDownload(f, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
+    
+    # Resize videos using MoviePy
+    clip1 = VideoFileClip(intro_filename)
+    clip3 = VideoFileClip("outro_li.mp4")
+    target_resolution = VideoFileClip(main_filename).size
+
+    intro_resized_filename = os.path.join(videos_directory, f"{row['name']}_intro_resized.mp4")
+    outro_resized_filename = os.path.join(videos_directory, f"{row['name']}_outro_resized.mp4")
+    
+    clip1.resize(target_resolution).write_videofile(intro_resized_filename, codec='libx264', audio_codec='aac')
+    clip3.resize(target_resolution).write_videofile(outro_resized_filename, codec='libx264', audio_codec='aac')
+
+    # Convert MP4s to .ts format
+    intro_ts = intro_resized_filename.replace('.mp4', '.ts')
+    main_ts = main_filename.replace('.mp4', '.ts')
+    outro_ts = outro_resized_filename.replace('.mp4', '.ts')
+
+    subprocess.run(['ffmpeg', '-i', intro_resized_filename, '-c', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', intro_ts])
+    subprocess.run(['ffmpeg', '-i', main_filename, '-c', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', main_ts])
+    subprocess.run(['ffmpeg', '-i', outro_resized_filename, '-c', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', outro_ts])
+
+    # Concatenate .ts files
+    output_ts = os.path.join(videos_directory, f"{row['name']}_temp.ts")
+    cmd = ['ffmpeg', '-i', f"concat:{intro_ts}|{main_ts}|{outro_ts}", '-c', 'copy', output_ts]
+    subprocess.run(cmd)
+
+    # Convert concatenated .ts back to .mp4
+    output_filename = os.path.join(videos_directory, f"{row['name']}_final.mp4")
+    subprocess.run(['ffmpeg', '-i', output_ts, '-c', 'copy', output_filename])
+
+    # Upload stitched video to Google Drive
+    file_metadata = {'name': os.path.basename(output_filename), 'parents': [stitch_folder]}
+    media = MediaFileUpload(output_filename, mimetype='video/mp4')
+    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
+    # Optionally remove temporary files
+    os.remove(intro_resized_filename)
+    os.remove(outro_resized_filename)
+    os.remove(intro_ts)
+    os.remove(main_ts)
+    os.remove(outro_ts)
+    os.remove(output_ts)
+
+    return row['name']
+
