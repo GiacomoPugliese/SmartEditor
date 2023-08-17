@@ -22,7 +22,7 @@ import numpy as np
 from fpdf import FPDF
 import uuid
 from helper import process_row, process_video
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import moviepy.editor as mp
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 import os
@@ -480,7 +480,7 @@ stitch_folder = st.text_input("ID of the Google Drive folder to upload videos to
 stitch_uploaded = st.file_uploader(label="Upload a CSV file of videos", type=['csv'])
 
 # Get user's local "Videos" directory
-videos_directory = os.path.join(os.path.expanduser('~'), 'Videos')
+videos_directory = os.path.join(os.getcwd(), 'Videos')
 
 stitch_button = st.button("Stitch Videos")
 
@@ -499,13 +499,12 @@ if stitch_button and st.session_state['final_auth'] and stitch_folder and stitch
 
     stitch_progress = st.empty()
     stitch_progress.text(f"Video Progress: 0/{len(df)}")
-    i=0
-    with ProcessPoolExecutor(max_workers=4) as executor:
+    i = 0
+    with ProcessPoolExecutor(max_workers=1) as executor:
         futures = [executor.submit(process_video, arg) for arg in arguments]
 
         for future in as_completed(futures):
             result = future.result()
             i += 1
-            stitch_progress.text(f"Video Progress: {i}/{len(df)}")
-
+            stitch_progress.text(f"Video Progress: {i}/{len(arguments)}")
 
