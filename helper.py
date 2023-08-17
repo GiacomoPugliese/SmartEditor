@@ -191,6 +191,110 @@ def process_row(args):
             pass
         return None
     
+import os
+import subprocess
+from moviepy.editor import VideoFileClip
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from google.oauth2.credentials import Credentials
+import os
+import boto3
+from botocore.exceptions import NoCredentialsError
+
+def resize_video(input_file, output_file, target_resolution):
+    clip = VideoFileClip(input_file)
+    clip.resize(target_resolution).write_videofile(output_file, codec='libx264', audio_codec='aac')
+
+def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_filename, output_filename):
+    # Set AWS details (replace with your own details)
+    AWS_REGION_NAME = 'us-east-2'
+    AWS_ACCESS_KEY = 'AKIARK3QQWNWXGIGOFOH'
+    AWS_SECRET_KEY = 'ClAUaloRIp3ebj9atw07u/o3joULLY41ghDiDc2a'
+
+    # Initialize the S3 client
+    s3 = boto3.client('s3',
+        region_name=AWS_REGION_NAME,
+        aws_access_key_id=AWS_ACCESS_KEY,
+        aws_secret_access_key=AWS_SECRET_KEY
+    )
+
+    # Initialize boto3 client for AWS Rekognition
+    client = boto3.client('mediaconvert',
+        region_name=AWS_REGION_NAME,
+        aws_access_key_id=AWS_ACCESS_KEY,
+        aws_secret_access_key=AWS_SECRET_KEY
+    )
+    
+    def get_end_timecode(filename):
+        with VideoFileClip(filename) as clip:
+            duration = int(clip.duration)
+            return f'00:{duration//60:02d}:{duration%60:02d}:00'
+    
+    # Define the input files and their roles
+    inputs = [
+        {'FileInput': intro_resized_filename, 'InputClippings': [{'StartTimecode': '00:00:00:00', 'EndTimecode': get_end_timecode(intro_resized_filename)}]},
+        {'FileInput': main_filename},
+        {'FileInput': outro_resized_filename, 'InputClippings': [{'StartTimecode': '00:00:00:00', 'EndTimecode': get_end_timecode(outro_resized_filename)}]}
+    ]
+    
+    # Define the output file settings
+    output = {
+        'Extension': 'mp4',
+        'ContainerSettings': {
+            'Container': 'MP4',
+            'Mp4Settings': {
+                'CslgAtom': 'INCLUDE',
+                'FreeSpaceBox': 'EXCLUDE',
+                'MoovPlacement': 'PROGRESSIVE_DOWNLOAD'
+            }
+        },
+        'VideoDescription': {
+            'CodecSettings': {
+                'Codec': 'H_264',
+                'H264Settings': {
+                    'CodecProfile': 'MAIN',
+                    'CodecLevel': 'AUTO'
+                }
+            }
+        }
+
+    }
+    
+    # Create the job settings
+    job_settings = {
+        'Inputs': inputs,
+        'OutputGroups': [{
+            'Name': 'File Group',
+            'Outputs': [output],
+            'OutputGroupSettings': {
+                'Type': 'FILE_GROUP_SETTINGS',
+                'FileGroupSettings': {
+                    'Destination': output_filename
+                }
+            }
+        }]
+    }
+    
+    # Submit the job
+    try:
+        response = client.create_job(Role='arn:aws:iam::123456789012:role/MediaConvert_Default_Role', Settings=job_settings)
+        print('Job created:', response['Job']['Id'])
+    except NoCredentialsError:
+        print('Credentials not available')
+
+def download_video(file_id, filename, service):
+    request = service.files().get_media(fileId=file_id)
+    with open(filename, 'wb') as f:
+        downloader = MediaIoBaseDownload(f, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
+def upload_video(filename, folder_id, service):
+    file_metadata = {'name': os.path.basename(filename), 'parents': [folder_id]}
+    media = MediaFileUpload(filename, mimetype='video/mp4')
+    return service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
 def process_video(data):
     row, videos_directory, creds_dict, stitch_folder = data
 
@@ -199,66 +303,33 @@ def process_video(data):
 
     # Download intro video
     intro_file_id = row['intro'].split("/file/d/")[1].split("/view")[0]
-    request = service.files().get_media(fileId=intro_file_id)
     intro_filename = os.path.join(videos_directory, f"{row['name']}_intro.mp4")
-    with open(intro_filename, 'wb') as f:
-        downloader = MediaIoBaseDownload(f, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
+    download_video(intro_file_id, intro_filename, service)
 
     # Download main video
     main_file_id = row['main'].split("/file/d/")[1].split("/view")[0]
-    request = service.files().get_media(fileId=main_file_id)
     main_filename = os.path.join(videos_directory, f"{row['name']}_main.mp4")
-    with open(main_filename, 'wb') as f:
-        downloader = MediaIoBaseDownload(f, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
+    download_video(main_file_id, main_filename, service)
 
-    
-    # Resize videos using MoviePy
-    clip1 = VideoFileClip(intro_filename)
-    clip3 = VideoFileClip("outro_li.mp4")
-    target_resolution = VideoFileClip(main_filename).size
+    # Get the resolution of the main video
+    main_clip = VideoFileClip(main_filename)
+    target_resolution = main_clip.size
 
+    # Resize intro and outro videos
     intro_resized_filename = os.path.join(videos_directory, f"{row['name']}_intro_resized.mp4")
     outro_resized_filename = os.path.join(videos_directory, f"{row['name']}_outro_resized.mp4")
-    
-    clip1.resize(target_resolution).write_videofile(intro_resized_filename, codec='libx264', audio_codec='aac')
-    clip3.resize(target_resolution).write_videofile(outro_resized_filename, codec='libx264', audio_codec='aac')
+    resize_video(intro_filename, intro_resized_filename, target_resolution)
+    resize_video("outro_li.mp4", outro_resized_filename, target_resolution)
 
-    # Convert MP4s to .ts format
-    intro_ts = intro_resized_filename.replace('.mp4', '.ts')
-    main_ts = main_filename.replace('.mp4', '.ts')
-    outro_ts = outro_resized_filename.replace('.mp4', '.ts')
-
-    subprocess.run(['ffmpeg', '-i', intro_resized_filename, '-c', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', intro_ts])
-    subprocess.run(['ffmpeg', '-i', main_filename, '-c', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', main_ts])
-    subprocess.run(['ffmpeg', '-i', outro_resized_filename, '-c', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', outro_ts])
-
-    # Concatenate .ts files
-    output_ts = os.path.join(videos_directory, f"{row['name']}_temp.ts")
-    cmd = ['ffmpeg', '-i', f"concat:{intro_ts}|{main_ts}|{outro_ts}", '-c', 'copy', output_ts]
-    subprocess.run(cmd)
-
-    # Convert concatenated .ts back to .mp4
+    # Concatenate video clips
     output_filename = os.path.join(videos_directory, f"{row['name']}_final.mp4")
-    subprocess.run(['ffmpeg', '-i', output_ts, '-c', 'copy', output_filename])
+    concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_filename, output_filename)
 
     # Upload stitched video to Google Drive
-    file_metadata = {'name': os.path.basename(output_filename), 'parents': [stitch_folder]}
-    media = MediaFileUpload(output_filename, mimetype='video/mp4')
-    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    upload_video(output_filename, stitch_folder, service)
 
     # Optionally remove temporary files
     os.remove(intro_resized_filename)
     os.remove(outro_resized_filename)
-    os.remove(intro_ts)
-    os.remove(main_ts)
-    os.remove(outro_ts)
-    os.remove(output_ts)
 
     return row['name']
-
