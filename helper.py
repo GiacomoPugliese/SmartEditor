@@ -205,11 +205,20 @@ def resize_video(input_file, output_file, target_resolution):
     clip = VideoFileClip(input_file)
     clip.resize(target_resolution).write_videofile(output_file, codec='libx264', audio_codec='aac')
 
+import boto3
+from moviepy.editor import VideoFileClip
+from botocore.exceptions import NoCredentialsError
+
+import time
+
 def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_filename, output_filename):
     # Set AWS details (replace with your own details)
     AWS_REGION_NAME = 'us-east-2'
     AWS_ACCESS_KEY = 'AKIARK3QQWNWXGIGOFOH'
     AWS_SECRET_KEY = 'ClAUaloRIp3ebj9atw07u/o3joULLY41ghDiDc2a'
+    BUCKET_NAME = 'li-general-tasks'
+    S3_INPUT_PREFIX = 'input_videos/'
+    S3_OUTPUT_PREFIX = 'output_videos/'
 
     # Initialize the S3 client
     s3 = boto3.client('s3',
@@ -218,26 +227,71 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
         aws_secret_access_key=AWS_SECRET_KEY
     )
 
-    # Initialize boto3 client for AWS Rekognition
+    # Initialize boto3 client for AWS MediaConvert
     client = boto3.client('mediaconvert',
         region_name=AWS_REGION_NAME,
         aws_access_key_id=AWS_ACCESS_KEY,
-        aws_secret_access_key=AWS_SECRET_KEY
+        aws_secret_access_key=AWS_SECRET_KEY,
+        endpoint_url='https://fkuulejsc.mediaconvert.us-east-2.amazonaws.com'
     )
-    
+
     def get_end_timecode(filename):
         with VideoFileClip(filename) as clip:
             duration = int(clip.duration)
             return f'00:{duration//60:02d}:{duration%60:02d}:00'
-    
+
+    def wait_for_job_completion(client, job_id):
+        while True:
+            response = client.get_job(Id=job_id)
+            status = response['Job']['Status']
+            if status in ['COMPLETE', 'ERROR', 'CANCELED']:
+                return status
+            time.sleep(5)
+
+    # Upload videos to S3
+    s3.upload_file(intro_resized_filename, BUCKET_NAME, S3_INPUT_PREFIX + 'intro.mp4')
+    s3.upload_file(main_filename, BUCKET_NAME, S3_INPUT_PREFIX + 'main.mp4')
+    s3.upload_file(outro_resized_filename, BUCKET_NAME, S3_INPUT_PREFIX + 'outro.mp4')
+
+    time.sleep(15)
     # Define the input files and their roles
     inputs = [
-        {'FileInput': intro_resized_filename, 'InputClippings': [{'StartTimecode': '00:00:00:00', 'EndTimecode': get_end_timecode(intro_resized_filename)}]},
-        {'FileInput': main_filename},
-        {'FileInput': outro_resized_filename, 'InputClippings': [{'StartTimecode': '00:00:00:00', 'EndTimecode': get_end_timecode(outro_resized_filename)}]}
+        {
+            'FileInput': f's3://{BUCKET_NAME}/{S3_INPUT_PREFIX}intro.mp4',
+            'AudioSelectors': {
+                'Audio Selector 1': {
+                    'DefaultSelection': 'DEFAULT',
+                    'SelectorType': 'TRACK',
+                    'Offset': 0,
+                    'ProgramSelection': 1,
+                }
+            }
+        },
+        {
+            'FileInput': f's3://{BUCKET_NAME}/{S3_INPUT_PREFIX}main.mp4',
+            'AudioSelectors': {
+                'Audio Selector 2': {
+                    'DefaultSelection': 'DEFAULT',
+                    'SelectorType': 'TRACK',
+                    'Offset': 0,
+                    'ProgramSelection': 1,
+                }
+            }
+        },
+        {
+            'FileInput': f's3://{BUCKET_NAME}/{S3_INPUT_PREFIX}outro.mp4',
+            'AudioSelectors': {
+                'Audio Selector 3': {
+                    'DefaultSelection': 'DEFAULT',
+                    'SelectorType': 'TRACK',
+                    'Offset': 0,
+                    'ProgramSelection': 1,
+                }
+            }
+        }
     ]
-    
-    # Define the output file settings
+
+
     output = {
         'Extension': 'mp4',
         'ContainerSettings': {
@@ -253,13 +307,29 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
                 'Codec': 'H_264',
                 'H264Settings': {
                     'CodecProfile': 'MAIN',
-                    'CodecLevel': 'AUTO'
+                    'CodecLevel': 'AUTO',
+                    'RateControlMode': 'QVBR',
+                    'MaxBitrate': 5000000  # Example value, adjust as needed
                 }
             }
-        }
-
+        },
+        'AudioDescriptions': [{
+            'AudioSourceName': 'Audio Selector 1', # Specify the name of the audio selector
+            'CodecSettings': {
+                'Codec': 'AAC',
+                'AacSettings': {
+                    'AudioDescriptionBroadcasterMix': 'NORMAL',
+                    'RateControlMode': 'CBR',
+                    'CodecProfile': 'LC',
+                    'CodingMode': 'CODING_MODE_2_0',
+                    'SampleRate': 48000,
+                    'Bitrate': 96000
+                }
+            }
+        }]
     }
-    
+
+
     # Create the job settings
     job_settings = {
         'Inputs': inputs,
@@ -269,18 +339,43 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
             'OutputGroupSettings': {
                 'Type': 'FILE_GROUP_SETTINGS',
                 'FileGroupSettings': {
-                    'Destination': output_filename
+                    'Destination': f's3://{BUCKET_NAME}/{S3_OUTPUT_PREFIX}{output_filename.rsplit(".", 1)[0]}'
                 }
             }
         }]
     }
-    
-    # Submit the job
+
+
     try:
-        response = client.create_job(Role='arn:aws:iam::123456789012:role/MediaConvert_Default_Role', Settings=job_settings)
-        print('Job created:', response['Job']['Id'])
-    except NoCredentialsError:
-        print('Credentials not available')
+        # Submit the job
+        response = client.create_job(Role='arn:aws:iam::092040901485:role/media_convert', Settings=job_settings)
+        job_id = response['Job']['Id']
+        print('Job created:', job_id)
+
+        # Wait for the job to finish
+        job_status = wait_for_job_completion(client, job_id)
+        if job_status == 'COMPLETE':
+            print('Job completed successfully.')
+        elif job_status == 'ERROR':
+            response = client.get_job(Id=job_id)
+            error_message = response['Job'].get('ErrorMessage', 'No error message provided.')
+            print('Job failed with error:', error_message)
+
+        else:
+            print(f'Job failed with status: {job_status}')
+            return
+
+        # Use a waiter to wait for the object to be available in the bucket
+        waiter = s3.get_waiter('object_exists')
+        waiter.wait(Bucket=BUCKET_NAME, Key=S3_OUTPUT_PREFIX + output_filename)
+        s3.download_file(BUCKET_NAME, S3_OUTPUT_PREFIX + output_filename, "Videos/" + output_filename)
+
+
+    except Exception as e:
+        print('Error:', e)
+
+    return
+
 
 def download_video(file_id, filename, service):
     request = service.files().get_media(fileId=file_id)
@@ -322,11 +417,11 @@ def process_video(data):
     resize_video("outro_li.mp4", outro_resized_filename, target_resolution)
 
     # Concatenate video clips
-    output_filename = os.path.join(videos_directory, f"{row['name']}_final.mp4")
+    output_filename = f"{row['name']}_final.mp4"
     concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_filename, output_filename)
 
     # Upload stitched video to Google Drive
-    upload_video(output_filename, stitch_folder, service)
+    upload_video("Videos/" + output_filename, stitch_folder, service)
 
     # Optionally remove temporary files
     os.remove(intro_resized_filename)

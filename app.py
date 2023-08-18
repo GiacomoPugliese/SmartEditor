@@ -499,8 +499,11 @@ if stitch_button and st.session_state['final_auth'] and stitch_folder and stitch
 
     stitch_progress = st.empty()
     stitch_progress.text(f"Video Progress: 0/{len(df)}")
+    # for i, arg in enumerate(arguments):
+    #     result = process_video(arg)
+    #     stitch_progress.text(f"Video Progress: {i+1}/{len(arguments)}")
     i = 0
-    with ProcessPoolExecutor(max_workers=1) as executor:
+    with ProcessPoolExecutor(max_workers=4) as executor:
         futures = [executor.submit(process_video, arg) for arg in arguments]
 
         for future in as_completed(futures):
