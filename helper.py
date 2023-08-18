@@ -208,9 +208,26 @@ def resize_video(input_file, output_file, target_resolution):
 import boto3
 from moviepy.editor import VideoFileClip
 from botocore.exceptions import NoCredentialsError
-
+from retry import retry
 import time
+from googleapiclient.errors import ResumableUploadError
+import ssl
 
+def wait_for_s3_object(s3, bucket, key, local_filepath):
+    """
+    Wait for an S3 object to exist and have the same size as the local file.
+    """
+    local_filesize = os.path.getsize(local_filepath)
+    while True:
+        try:
+            response = s3.head_object(Bucket=bucket, Key=key)
+            if 'ContentLength' in response and response['ContentLength'] == local_filesize:
+                return True
+        except Exception as e:
+            pass
+        ("waited")
+        time.sleep(1)
+        
 def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_filename, output_filename):
     # Set AWS details (replace with your own details)
     AWS_REGION_NAME = 'us-east-2'
@@ -219,6 +236,9 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
     BUCKET_NAME = 'li-general-tasks'
     S3_INPUT_PREFIX = 'input_videos/'
     S3_OUTPUT_PREFIX = 'output_videos/'
+
+    # Create a unique identifier based on the main file name
+    unique_id = os.path.basename(main_filename).rsplit('.', 1)[0]
 
     # Initialize the S3 client
     s3 = boto3.client('s3',
@@ -248,16 +268,20 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
                 return status
             time.sleep(5)
 
-    # Upload videos to S3
-    s3.upload_file(intro_resized_filename, BUCKET_NAME, S3_INPUT_PREFIX + 'intro.mp4')
-    s3.upload_file(main_filename, BUCKET_NAME, S3_INPUT_PREFIX + 'main.mp4')
-    s3.upload_file(outro_resized_filename, BUCKET_NAME, S3_INPUT_PREFIX + 'outro.mp4')
+    # Upload videos to S3 with unique names
+    s3.upload_file(intro_resized_filename, BUCKET_NAME, S3_INPUT_PREFIX + f'{unique_id}_intro.mp4')
+    wait_for_s3_object(s3, BUCKET_NAME, S3_INPUT_PREFIX + f'{unique_id}_intro.mp4', intro_resized_filename)
 
-    time.sleep(15)
+    s3.upload_file(main_filename, BUCKET_NAME, S3_INPUT_PREFIX + f'{unique_id}_main.mp4')
+    wait_for_s3_object(s3, BUCKET_NAME, S3_INPUT_PREFIX + f'{unique_id}_main.mp4', main_filename)
+
+    s3.upload_file(outro_resized_filename, BUCKET_NAME, S3_INPUT_PREFIX + f'{unique_id}_outro.mp4')
+    wait_for_s3_object(s3, BUCKET_NAME, S3_INPUT_PREFIX + f'{unique_id}_outro.mp4', outro_resized_filename)
+
     # Define the input files and their roles
     inputs = [
         {
-            'FileInput': f's3://{BUCKET_NAME}/{S3_INPUT_PREFIX}intro.mp4',
+            'FileInput': f's3://{BUCKET_NAME}/{S3_INPUT_PREFIX}{unique_id}_intro.mp4',
             'AudioSelectors': {
                 'Audio Selector 1': {
                     'DefaultSelection': 'DEFAULT',
@@ -268,7 +292,7 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
             }
         },
         {
-            'FileInput': f's3://{BUCKET_NAME}/{S3_INPUT_PREFIX}main.mp4',
+            'FileInput': f's3://{BUCKET_NAME}/{S3_INPUT_PREFIX}{unique_id}_main.mp4',
             'AudioSelectors': {
                 'Audio Selector 2': {
                     'DefaultSelection': 'DEFAULT',
@@ -279,7 +303,7 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
             }
         },
         {
-            'FileInput': f's3://{BUCKET_NAME}/{S3_INPUT_PREFIX}outro.mp4',
+            'FileInput': f's3://{BUCKET_NAME}/{S3_INPUT_PREFIX}{unique_id}_outro.mp4',
             'AudioSelectors': {
                 'Audio Selector 3': {
                     'DefaultSelection': 'DEFAULT',
@@ -290,7 +314,6 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
             }
         }
     ]
-
 
     output = {
         'Extension': 'mp4',
@@ -347,23 +370,39 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
 
 
     try:
-        # Submit the job
-        response = client.create_job(Role='arn:aws:iam::092040901485:role/media_convert', Settings=job_settings)
-        job_id = response['Job']['Id']
-        print('Job created:', job_id)
+        max_retries = 3
+        retry_count = 0
 
-        # Wait for the job to finish
-        job_status = wait_for_job_completion(client, job_id)
-        if job_status == 'COMPLETE':
-            print('Job completed successfully.')
-        elif job_status == 'ERROR':
-            response = client.get_job(Id=job_id)
-            error_message = response['Job'].get('ErrorMessage', 'No error message provided.')
-            print('Job failed with error:', error_message)
+        while retry_count < max_retries:
+            try:
+                # Submit the job
+                response = client.create_job(Role='arn:aws:iam::092040901485:role/media_convert', Settings=job_settings)
+                job_id = response['Job']['Id']
+                print('Job created:', job_id)
 
-        else:
-            print(f'Job failed with status: {job_status}')
+                # Wait for the job to finish
+                job_status = wait_for_job_completion(client, job_id)
+                if job_status == 'COMPLETE':
+                    print('Job completed successfully.')
+                    break
+                elif job_status == 'ERROR':
+                    response = client.get_job(Id=job_id)
+                    error_message = response['Job'].get('ErrorMessage', 'No error message provided.')
+                    print('Job failed with error:', error_message)
+                    retry_count += 1
+                    print(f"Retrying job submission... (Attempt {retry_count}/{max_retries})")
+                else:
+                    print(f'Job failed with status: {job_status}')
+                    return
+            except Exception as e:
+                print('Error:', e)
+                retry_count += 1
+                print(f"Retrying job submission... (Attempt {retry_count}/{max_retries})")
+
+        if retry_count == max_retries:
+            print('Maximum number of retries reached. Job submission failed.')
             return
+
 
         # Use a waiter to wait for the object to be available in the bucket
         waiter = s3.get_waiter('object_exists')
@@ -376,55 +415,57 @@ def concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_
 
     return
 
-
+@retry((ssl.SSLEOFError, ResumableUploadError), tries=5, delay=2, backoff=2)
 def download_video(file_id, filename, service):
-    request = service.files().get_media(fileId=file_id)
-    with open(filename, 'wb') as f:
-        downloader = MediaIoBaseDownload(f, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-
+    try:
+        request = service.files().get_media(fileId=file_id)
+        with open(filename, 'wb') as f:
+            downloader = MediaIoBaseDownload(f, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+    except:
+        print("retried!")
+    
+@retry((ssl.SSLEOFError, ResumableUploadError), tries=5, delay=2, backoff=2)
 def upload_video(filename, folder_id, service):
     file_metadata = {'name': os.path.basename(filename), 'parents': [folder_id]}
-    media = MediaFileUpload(filename, mimetype='video/mp4')
-    return service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    media = MediaFileUpload(filename, mimetype='video/mp4', resumable=True)
+    try:
+        return service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    except (ssl.SSLEOFError, ResumableUploadError) as e:
+        print(f"{e.__class__.__name__} encountered, retrying...")
+        raise
 
 def process_video(data):
-    row, videos_directory, creds_dict, stitch_folder = data
+    row_number, row, videos_directory, creds_dict, stitch_folder = data
+
 
     creds = Credentials.from_authorized_user_info(creds_dict)
     service = build('drive', 'v3', credentials=creds)
-
-    # Download intro video
-    intro_file_id = row['intro'].split("/file/d/")[1].split("/view")[0]
-    intro_filename = os.path.join(videos_directory, f"{row['name']}_intro.mp4")
-    download_video(intro_file_id, intro_filename, service)
 
     # Download main video
     main_file_id = row['main'].split("/file/d/")[1].split("/view")[0]
     main_filename = os.path.join(videos_directory, f"{row['name']}_main.mp4")
     download_video(main_file_id, main_filename, service)
 
-    # Get the resolution of the main video
-    main_clip = VideoFileClip(main_filename)
-    target_resolution = main_clip.size
-
-    # Resize intro and outro videos
-    intro_resized_filename = os.path.join(videos_directory, f"{row['name']}_intro_resized.mp4")
-    outro_resized_filename = os.path.join(videos_directory, f"{row['name']}_outro_resized.mp4")
-    resize_video(intro_filename, intro_resized_filename, target_resolution)
-    resize_video("outro_li.mp4", outro_resized_filename, target_resolution)
+    # Download intro video
+    intro_file_id = row['intro'].split("/file/d/")[1].split("/view")[0]
+    intro_filename = os.path.join(videos_directory, f"{row['name']}_intro.mp4")
+    download_video(intro_file_id, intro_filename, service)
 
     # Concatenate video clips
     output_filename = f"{row['name']}_final.mp4"
-    concatenate_videos_aws(intro_resized_filename, main_filename, outro_resized_filename, output_filename)
+    concatenate_videos_aws(intro_filename, main_filename,"outro_li.mp4", output_filename)
 
     # Upload stitched video to Google Drive
     upload_video("Videos/" + output_filename, stitch_folder, service)
 
+    del service
+
     # Optionally remove temporary files
-    os.remove(intro_resized_filename)
-    os.remove(outro_resized_filename)
+    os.remove(intro_filename)
+    os.remove(main_filename)
+    os.remove("Videos/" + output_filename)
 
     return row['name']

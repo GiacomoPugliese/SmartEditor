@@ -487,6 +487,8 @@ stitch_button = st.button("Stitch Videos")
 if stitch_button and st.session_state['final_auth'] and stitch_folder and stitch_uploaded is not None:
     df = pd.read_csv(stitch_uploaded)
 
+   # Assuming that 'CLIENT_SECRET_FILE', 'videos_directory', 'stitch_folder', and 'df' are defined elsewhere in your code
+
     CLIENT_SECRET_FILE = 'credentials.json'
     with open(CLIENT_SECRET_FILE, 'r') as f:
         client_info = json.load(f)['web']
@@ -495,19 +497,29 @@ if stitch_button and st.session_state['final_auth'] and stitch_folder and stitch
     creds_dict['client_secret'] = client_info['client_secret']
     creds_dict['refresh_token'] = creds_dict.get('_refresh_token')
 
-    arguments = [(row, videos_directory, creds_dict, stitch_folder) for _, row in df.iterrows()]
+    arguments = [(index, row, videos_directory, creds_dict, stitch_folder) for index, row in df.iterrows()]
 
     stitch_progress = st.empty()
     stitch_progress.text(f"Video Progress: 0/{len(df)}")
-    # for i, arg in enumerate(arguments):
-    #     result = process_video(arg)
-    #     stitch_progress.text(f"Video Progress: {i+1}/{len(arguments)}")
+
     i = 0
-    with ProcessPoolExecutor(max_workers=4) as executor:
+
+    with ProcessPoolExecutor(max_workers=15) as executor:
         futures = [executor.submit(process_video, arg) for arg in arguments]
 
-        for future in as_completed(futures):
-            result = future.result()
-            i += 1
-            stitch_progress.text(f"Video Progress: {i}/{len(arguments)}")
+        for future, arg in zip(as_completed(futures), arguments):
+            try:
+                result = future.result()
+                i += 1
+                stitch_progress.text(f"Video Progress: {i}/{len(arguments)}")
+            except Exception as e:
+                # Assuming the 'arg' is a tuple and the first element is the row number
+                row_number = arg[0]
+                print(f'Exception at row {row_number + 2}: {e}')
+
+
+
+
+
+
 
