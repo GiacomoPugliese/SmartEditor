@@ -23,8 +23,6 @@ from fpdf import FPDF
 import uuid
 from helper import process_row, process_video
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-import moviepy.editor as mp
-from moviepy.editor import VideoFileClip, concatenate_videoclips
 import os
 import subprocess
 # import pyheif
