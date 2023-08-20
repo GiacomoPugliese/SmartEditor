@@ -1,10 +1,6 @@
 # Import necessary libraries
 import streamlit as st
 import pandas as pd
-import shotstack_sdk as shotstack
-from shotstack_sdk.api import edit_api
-from shotstack_sdk.model.template_render import TemplateRender
-from shotstack_sdk.model.merge_field import MergeField
 import requests
 import os
 import shutil
@@ -26,7 +22,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 import os
 import subprocess
 import re
-# import pyheif
+import pyheif
 
 hide_streamlit_style = """ <style> #MainMenu {visibility: hidden;} footer {visibility: hidden;} </style> """ 
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
@@ -230,9 +226,6 @@ with col2:
 # File upload widget
 uploaded_file = st.file_uploader(label="Upload a CSV file for processing", type=['csv'])
 
-# Configure the Shotstack API
-configuration = shotstack.Configuration(host = "https://api.shotstack.io/v1")
-configuration.api_key['DeveloperKey'] = "ymfTz2fdKw58Oog3dxg5haeUtTOMDfXH4Qp9zlx2"
 
 label_button = st.button("Process Tags")
 
