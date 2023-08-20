@@ -447,11 +447,42 @@ def generate_pdf(template_id, images_folder_id, upload_folder_id, program_name, 
                     # Download the image from Google Drive to a local file
                     image_request = drive_service.files().get_media(fileId=image_id)
                     local_image_path = f"Images/{row['name']}.jpeg"
-                    with open(local_image_path, 'wb') as image_file:
-                        downloader = MediaIoBaseDownload(image_file, image_request)
-                        done = False
-                        while done is False:
-                            status, done = downloader.next_chunk()
+                    image_data_io = BytesIO()
+                    downloader = MediaIoBaseDownload(image_data_io, image_request)
+                    done = False
+                    while done is False:
+                        status, done = downloader.next_chunk()
+
+                    image_data_io.seek(0)
+                    image_data = image_data_io.read()
+
+                    # Determine the image format based on the content type
+                    image_format = image_request.headers.get('content-type', '').split('/')[-1]
+
+                    # Open the image from the response content
+                    if image_format == 'png' or image_format == 'heic':
+                        if image_format == 'png':
+                            img = Image.open(BytesIO(image_data))
+                        else:  # 'heic' in image_format
+                            heif_file = pyheif.read(BytesIO(image_data))
+                            img = Image.frombytes(
+                                heif_file.mode,
+                                heif_file.size,
+                                heif_file.data,
+                                "raw",
+                                heif_file.mode,
+                                heif_file.stride,
+                            )
+                        rgb_im = img.convert('RGB')
+                        rgb_im.save(local_image_path, format='JPEG')
+                    else:
+                        img = Image.open(BytesIO(image_data))
+                        # Calculate new width while keeping aspect ratio
+                        width = int(img.width * (176 / img.height))
+                        # Resize the image
+                        img = img.resize((width, 176))
+                        # Save the image locally
+                        img.save(local_image_path)
 
                     # Upload the local image to S3
                     s3_image_url = upload_to_s3(local_image_path, f"Image_{row['name']}.jpeg")
@@ -462,20 +493,19 @@ def generate_pdf(template_id, images_folder_id, upload_folder_id, program_name, 
                             'url': s3_image_url
                         }
                     })
-            if True:
-                requests_list.append({
-                    'replaceAllText': {
-                        'containsText': {
-                            'text': f'{col}',
-                            'matchCase': False
-                        },
-                        'replaceText': str(row[col])
-                    }
+            requests_list.append({
+                'replaceAllText': {
+                    'containsText': {
+                        'text': f'{col}',
+                        'matchCase': False
+                    },
+                    'replaceText': str(row[col])
+                }
                 })
         requests_list.append({
             'replaceAllText': {
                 'containsText': {
-                    'text': '{program name}',
+                    'text': '{program}',
                     'matchCase': False
                 },
                 'replaceText': program_name
