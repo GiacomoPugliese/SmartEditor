@@ -33,7 +33,7 @@ s3_client = boto3.client('s3',
 bucket_name = 'li-general-tasks'
 
 
-def generate_images(template_id, output_id, merge_fields_arr, uploaded_csv):
+def generate_images(template_id, output_id, merge_fields_arr, df):
     # Google Drive service setup
     CLIENT_SECRET_FILE = 'credentials.json'
     API_NAME = 'drive'
@@ -56,9 +56,6 @@ def generate_images(template_id, output_id, merge_fields_arr, uploaded_csv):
     
     # Build the Google Slides service
     slides_service = build('slides', 'v1', credentials=creds)
-
-    # Read the uploaded CSV file into a pandas DataFrame
-    df = pd.read_csv(uploaded_csv)
 
     # Iterate over each row of the DataFrame
     for _, row in df.iterrows():
@@ -99,18 +96,19 @@ def generate_images(template_id, output_id, merge_fields_arr, uploaded_csv):
             print(f"Unexpected content type: {content_type}")
             continue
 
+        name_image = f'Image_{_+1}.jpeg'
         # Save the image data to a local file for verification
-        with open(f'Image_{_+1}.jpeg', 'wb') as image_file:
+        with open(name_image, 'wb') as image_file:
             image_file.write(image_data)
 
         # Upload the JPEG image to the specified Google Drive folder
         media = MediaInMemoryUpload(image_data, mimetype='image/jpeg', resumable=True)
-        file_metadata = {'name': 'Image_' + str(_+1) + '.jpeg', 'parents': [output_id]}
+        file_metadata = {'name':  str(row[merge_fields_arr[0]]) + '.jpeg', 'parents': [output_id]}
         uploaded_image = drive_service.files().create(body=file_metadata, media_body=media).execute()
 
         # Delete the temporary copy
         drive_service.files().delete(fileId=copy_id).execute()
-
+        os.remove(name_image)
     # Return a confirmation message
     return 'Images have been successfully generated and uploaded to the specified Google Drive folder.'
 
@@ -263,14 +261,11 @@ def generate_pdf(template_id, images_folder_id, upload_folder_id, uploaded_csv):
 
         # Get the ID of the top-most image shape in the slide
         image_shape_id = None
-        top_most_position = None
         for slide in presentation_copy['slides']:
-            for shape in slide['pageElements']:
-                if 'image' in shape:  # Check if the shape has the 'image' key'
-                    position = shape['transform']['translateY']
-                    if top_most_position is None or position < top_most_position:
-                        top_most_position = position
-                        image_shape_id = shape['objectId']
+            for shape in reversed(slide['pageElements']): # Start from the end of the list
+                if 'image' in shape:  # Check if the shape has the 'image' key
+                    image_shape_id = shape['objectId']
+                    break
             if image_shape_id:
                 break
 
