@@ -24,8 +24,14 @@ import subprocess
 import re
 import pyheif
 
+
+st.set_page_config(
+    page_title='PhotoEditor',
+    page_icon='🖼️'
+)   
 hide_streamlit_style = """ <style> #MainMenu {visibility: hidden;} footer {visibility: hidden;} </style> """ 
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 
 def create_pdf_id(image_paths):
     time.sleep(3)
