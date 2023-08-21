@@ -276,11 +276,11 @@ col1, col2 = st.columns(2)
 
 with col1:
     # Get the ID of the Google Drive folder to upload the images to
-    upload_folder_id = st.text_input("Link of the Google Drive folder to upload the pdf to:")
+    upload_folder_id = st.text_input("URL of the Google Drive folder to upload the pdf to:")
 
 with col2:
     # Get the ID of the Google Drive folder containing the images
-    images_folder_id = st.text_input("Link of the Google Drive folder containing the photos:")
+    images_folder_id = st.text_input("URL of the Google Drive folder containing the photos:")
 
 # File upload widget
 uploaded_file = st.file_uploader(label="Upload a CSV file for processing", type=['csv'])
