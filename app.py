@@ -32,6 +32,14 @@ st.set_page_config(
 hide_streamlit_style = """ <style> #MainMenu {visibility: hidden;} footer {visibility: hidden;} </style> """ 
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
+def extract_id_from_url(url):
+    match = re.search(r'(?<=folders/)[a-zA-Z0-9_-]+', url)
+    if match:
+        return match.group(0)
+    match = re.search(r'(?<=spreadsheets/d/)[a-zA-Z0-9_-]+', url)
+    if match:
+        return match.group(0)
+    return None
 
 def create_pdf_id(image_paths):
     time.sleep(3)
@@ -227,11 +235,11 @@ col1, col2 = st.columns(2)
 
 with col1:
     # Get the ID of the Google Drive folder to upload the images to
-    upload_folder_id = st.text_input("ID of the Google Drive folder to upload the pdf to:")
+    upload_folder_id = st.text_input("Link of the Google Drive folder to upload the pdf to:")
 
 with col2:
     # Get the ID of the Google Drive folder containing the images
-    images_folder_id = st.text_input("ID of the Google Drive folder containing the photos:")
+    images_folder_id = st.text_input("Link of the Google Drive folder containing the photos:")
 
 # File upload widget
 uploaded_file = st.file_uploader(label="Upload a CSV file for processing", type=['csv'])
@@ -240,6 +248,11 @@ uploaded_file = st.file_uploader(label="Upload a CSV file for processing", type=
 label_button = st.button("Process Tags")
 
 if uploaded_file is not None and slides_temp and upload_folder_id and images_folder_id and label_button and st.session_state['final_auth']:
+
+    slides_temp = extract_id_from_url(slides_temp)
+    upload_folder_id = extract_id_from_url(upload_folder_id)
+    images_folder_id = extract_id_from_url(images_folder_id)
+
 
     # Google Drive service setup
     CLIENT_SECRET_FILE = 'credentials.json'
@@ -275,26 +288,6 @@ if uploaded_file is not None and slides_temp and upload_folder_id and images_fol
     image_paths = []
 
     generate_pdf(slides_temp, images_folder_id, upload_folder_id, uploaded_file)
-
-
-
-def extract_id_from_url(url):
-    # Extract Google Drive folder ID
-    folder_match = re.search(r'(?<=folders/)[a-zA-Z0-9_-]+', url)
-    if folder_match:
-        return folder_match.group(0)
-
-    # Extract Google Sheets ID
-    sheets_match = re.search(r'(?<=spreadsheets/d/)[a-zA-Z0-9_-]+', url)
-    if sheets_match:
-        return sheets_match.group(0)
-
-    # Extract Google Slides ID
-    slides_match = re.search(r'(?<=presentation/d/)[a-zA-Z0-9_-]+', url)
-    if slides_match:
-        return slides_match.group(0)
-
-    return None
 
 st.header("Image Generation from a Template")
 col1, col2 = st.columns(2)
