@@ -195,7 +195,7 @@ with st.expander("Click to view full directions for this site"):
     st.write("- Upload a csv with columns PRECISELY titled whatever you want your merge fields to be.")
     st.write("- Click 'Generate Images' to begin the image generation and view them in your destination Google drive folder.")
 
-st.header("Google authentication")
+st.header("Google Authentication")
 
 try:
     if st.button("Authenticate Google Account"):
@@ -255,7 +255,7 @@ with col1:
         st.session_state['id'] = False
 
 with col2:
-    slides_temp = st.text_input("Google Slides Template Link")
+    slides_temp = st.text_input("Google Slides Template URL")
 
 col1, col2 = st.columns(2)
 
