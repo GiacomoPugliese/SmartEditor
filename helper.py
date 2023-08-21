@@ -24,7 +24,7 @@ import os
 import subprocess
 import boto3
 import tempfile
-import pyheif
+# import pyheif
 
 # create s3 client
 s3_client = boto3.client('s3', 
@@ -214,7 +214,7 @@ def upload_to_s3(local_image_path, image_name):
     # Return the public URL of the uploaded image in S3
     return f"https://{BUCKET_NAME}.s3.amazonaws.com/{S3_INPUT_PREFIX}{image_name}"
 
-def generate_pdf(template_id, images_folder_id, upload_folder_id, program_name, uploaded_csv):
+def generate_pdf(template_id, images_folder_id, upload_folder_id, uploaded_csv):
     # Google Drive service setup
     CLIENT_SECRET_FILE = 'credentials.json'
     API_NAME = 'drive'
@@ -337,15 +337,6 @@ def generate_pdf(template_id, images_folder_id, upload_folder_id, program_name, 
                     'replaceText': str(row[col])
                 }
                 })
-        requests_list.append({
-            'replaceAllText': {
-                'containsText': {
-                    'text': '{program}',
-                    'matchCase': False
-                },
-                'replaceText': program_name
-            }
-        })
         slides_service.presentations().batchUpdate(presentationId=copy_id, body={'requests': requests_list}).execute()
 
         # Export the populated copy as a JPEG image
