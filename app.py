@@ -39,6 +39,9 @@ def extract_id_from_url(url):
     match = re.search(r'(?<=spreadsheets/d/)[a-zA-Z0-9_-]+', url)
     if match:
         return match.group(0)
+    match = re.search(r'(?<=presentation/d/)[a-zA-Z0-9_-]+', url)
+    if match:
+        return match.group(0)
     return None
 
 def create_pdf_id(image_paths):
@@ -143,6 +146,18 @@ def reset_s3():
         # Add a placeholder object to represent the "directory"
         s3.put_object(Bucket='li-general-tasks', Key=subdir)
 
+def set_link_sharing(file_id, drive_service):
+    try:
+        # Create the new permission
+        permission = {
+            'type': 'anyone',
+            'role': 'reader'
+        }
+        # Set the new permission
+        drive_service.permissions().create(fileId=file_id, body=permission).execute()
+        return True
+    except:
+        return False
 
 try:
     
@@ -300,6 +315,10 @@ if uploaded_file is not None and slides_temp and upload_folder_id and images_fol
 
         # Build the Google Drive service
         drive_service = build('drive', 'v3', credentials=creds)
+
+        # Set sharing permissions for slides_temp, upload_folder_id, and images_folder_id
+        for file_id in [slides_temp, upload_folder_id, images_folder_id]:
+            set_link_sharing(file_id, drive_service)
 
         # Get the list of images in the Google Drive folder
         images_request = drive_service.files().list(q=f"'{images_folder_id}' in parents").execute()

@@ -215,6 +215,7 @@ def upload_to_s3(local_image_path, image_name):
     return f"https://{BUCKET_NAME}.s3.amazonaws.com/{S3_INPUT_PREFIX}{image_name}"
 
 def generate_pdf(template_id, images_folder_id, upload_folder_id, uploaded_csv):
+    print(images_folder_id)
     # Google Drive service setup
     CLIENT_SECRET_FILE = 'credentials.json'
     API_NAME = 'drive'
@@ -265,7 +266,7 @@ def generate_pdf(template_id, images_folder_id, upload_folder_id, uploaded_csv):
         top_most_position = None
         for slide in presentation_copy['slides']:
             for shape in slide['pageElements']:
-                if 'image' in shape:  # Check if the shape has the 'image' key
+                if 'image' in shape:  # Check if the shape has the 'image' key'
                     position = shape['transform']['translateY']
                     if top_most_position is None or position < top_most_position:
                         top_most_position = position
@@ -281,7 +282,7 @@ def generate_pdf(template_id, images_folder_id, upload_folder_id, uploaded_csv):
                 if image_id:
                     # Download the image from Google Drive to a local file
                     image_request = drive_service.files().get_media(fileId=image_id)
-                    local_image_path = f"Images/{row['name']}.jpeg"
+                    
                     image_data_io = BytesIO()
                     downloader = MediaIoBaseDownload(image_data_io, image_request)
                     done = False
@@ -291,11 +292,13 @@ def generate_pdf(template_id, images_folder_id, upload_folder_id, uploaded_csv):
                     image_data_io.seek(0)
                     image_data = image_data_io.read()
 
-                    # Determine the image format based on the content type
-                    image_format = image_request.headers.get('content-type', '').split('/')[-1]
-
+                    # Get the metadata of the file
+                    file_metadata = drive_service.files().get(fileId=image_id).execute()
+                    image_format = file_metadata.get('mimeType', '').split('/')[-1].lower()
+                    local_image_path = f"Images/{row['name']}.{image_format}"
+                    print(image_format)
                     # Open the image from the response content
-                    if image_format == 'png' or image_format == 'heic':
+                    if image_format == 'png' or image_format == 'heic' or image_format == 'heif':
                         if image_format == 'png':
                             img = Image.open(BytesIO(image_data))
                         else:  # 'heic' in image_format
@@ -308,16 +311,19 @@ def generate_pdf(template_id, images_folder_id, upload_folder_id, uploaded_csv):
                                 heif_file.mode,
                                 heif_file.stride,
                             )
-                        rgb_im = img.convert('RGB')
-                        rgb_im.save(local_image_path, format='JPEG')
+                        img_rgb = img.convert('RGB')
+                        img_rgb.save(local_image_path, format='JPEG')
                     else:
                         img = Image.open(BytesIO(image_data))
+                        # Check if the image mode is not 'RGB' and convert it if needed
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
                         # Calculate new width while keeping aspect ratio
                         width = int(img.width * (176 / img.height))
                         # Resize the image
                         img = img.resize((width, 176))
                         # Save the image locally
-                        img.save(local_image_path)
+                        img.save(local_image_path, format='JPEG')
 
                     # Upload the local image to S3
                     s3_image_url = upload_to_s3(local_image_path, f"Image_{row['name']}.jpeg")
