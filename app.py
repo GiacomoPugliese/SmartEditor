@@ -274,46 +274,46 @@ uploaded_file = st.file_uploader(label="Upload a CSV file for processing", type=
 label_button = st.button("Process Tags")
 
 if uploaded_file is not None and slides_temp and upload_folder_id and images_folder_id and label_button and st.session_state['final_auth']:
-
-    slides_temp = extract_id_from_url(slides_temp)
-    upload_folder_id = extract_id_from_url(upload_folder_id)
-    images_folder_id = extract_id_from_url(images_folder_id)
-
-
-    # Google Drive service setup
-    CLIENT_SECRET_FILE = 'credentials.json'
-    API_NAME = 'drive'
-    API_VERSION = 'v3'
-    SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/presentations']
+    with st.spinner("Processing tags (may take a few minutes)..."):
+        slides_temp = extract_id_from_url(slides_temp)
+        upload_folder_id = extract_id_from_url(upload_folder_id)
+        images_folder_id = extract_id_from_url(images_folder_id)
 
 
-    with open(CLIENT_SECRET_FILE, 'r') as f:
-        client_info = json.load(f)['web']
+        # Google Drive service setup
+        CLIENT_SECRET_FILE = 'credentials.json'
+        API_NAME = 'drive'
+        API_VERSION = 'v3'
+        SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/presentations']
 
-    creds_dict = st.session_state['creds']
-    creds_dict['client_id'] = client_info['client_id']
-    creds_dict['client_secret'] = client_info['client_secret']
-    creds_dict['refresh_token'] = creds_dict.get('_refresh_token')
 
-    # Create Credentials from creds_dict
-    creds = Credentials.from_authorized_user_info(creds_dict)
+        with open(CLIENT_SECRET_FILE, 'r') as f:
+            client_info = json.load(f)['web']
 
-    # Build the Google Drive service
-    drive_service = build('drive', 'v3', credentials=creds)
+        creds_dict = st.session_state['creds']
+        creds_dict['client_id'] = client_info['client_id']
+        creds_dict['client_secret'] = client_info['client_secret']
+        creds_dict['refresh_token'] = creds_dict.get('_refresh_token')
 
-    # Get the list of images in the Google Drive folder
-    images_request = drive_service.files().list(q=f"'{images_folder_id}' in parents").execute()
-    images_files = images_request.get('files', [])
+        # Create Credentials from creds_dict
+        creds = Credentials.from_authorized_user_info(creds_dict)
 
-    # Map each image to the person's name
-    images_map = {}
-    for image_file in images_files:
-        image_name = os.path.splitext(image_file['name'].replace('_', ' '))[0]
-        images_map[image_name] = image_file['id']
+        # Build the Google Drive service
+        drive_service = build('drive', 'v3', credentials=creds)
 
-    image_paths = []
+        # Get the list of images in the Google Drive folder
+        images_request = drive_service.files().list(q=f"'{images_folder_id}' in parents").execute()
+        images_files = images_request.get('files', [])
 
-    generate_pdf(slides_temp, images_folder_id, upload_folder_id, uploaded_file)
+        # Map each image to the person's name
+        images_map = {}
+        for image_file in images_files:
+            image_name = os.path.splitext(image_file['name'].replace('_', ' '))[0]
+            images_map[image_name] = image_file['id']
+
+        image_paths = []
+
+        generate_pdf(slides_temp, images_folder_id, upload_folder_id, uploaded_file)
 
 st.header("Image Generation from a Template")
 col1, col2 = st.columns(2)
@@ -331,7 +331,8 @@ if uploaded_csv:
     st.write("Merge fields:", ", ".join(merge_fields))
 
 if st.button("Generate Images") and st.session_state['final_auth'] and template_url and merge_fields and uploaded_csv:
-    template_id = extract_id_from_url(template_url)
-    output_id = extract_id_from_url(output_url)
-    generate_images(template_id, output_id, merge_fields, uploaded_csv)
+    with st.spinner("Generating images (may take a few minutes)..."):
+        template_id = extract_id_from_url(template_url)
+        output_id = extract_id_from_url(output_url)
+        generate_images(template_id, output_id, merge_fields, uploaded_csv)
     
