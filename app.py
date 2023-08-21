@@ -22,7 +22,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 import os
 import subprocess
 import re
-import pyheif
+# import pyheif
 
 
 st.set_page_config(
@@ -144,17 +144,24 @@ st.title("LI Image Editor")
 st.caption("By Giacomo Pugliese")
 
 with st.expander("Click to view full directions for this site"):
+    st.subheader("Google Authentication")
+    st.write("- Click 'Authenticate Google Account, and then on the generated link.")
+    st.write("- Follow the steps of Google login until you get to the final page.")
+    st.write("- Click on 'Finalize Authentication' to proceed to rest of website.")
     st.subheader("IDs and Doortags")
-    st.write("- Select which template you want to make, as well as the google drive folder ids for your photos and intended output destination.")
-    st.write("- If using an intern template, also indicate which program the interns are in")
-    st.write("- Upload a csv with columns PRECISELY titled 'name', 'role' (high school for interns, job description for staff), 'location', and 'class' (you can omit class column if using a staff template)")
-    st.write("- Click 'Process Tags' to being renderings of the chosen template and view them in your destination google drive folder'")
-    st.subheader("Video Intro Generator")
-    st.write("- Enter the intended output google drive folder id, as well as the program name of the students")
-    st.write("- Upload a csv with columns PRECISELY titled 'name', 'school', 'location', and 'class'")
-    st.write("- Click 'Process Videos' to being intro video renderings and view them in your destination google drive folder'")
+    st.write("- Select which type of template you want to make.")
+    st.write("- Design and upload the link for a template in Google slides for the ID/Doortags with place holder text PRECISELY titled 'name', 'program', 'role' (high school name for interns, job description for staff), 'location', and 'class' (you can omit class column if using a staff template). ")
+    st.write("- Upload a csv with columns named containing the placeholder text from the slides template.")
+    st.write("- Enter the link of the Google drive folder containing photos that correspond exactly to the rows within the 'name' column.")
+    st.write("- Enter the intended output google drive folder link.")
+    st.write("- Click 'Process Tags' to begin renderings of the chosen template and view the pdf containing them in your destination google drive folder.")
+    st.subheader("Image Generation from a Template")
+    st.write("- Enter the intended output google drive folder link.")
+    st.write("- Design and upload the link for a template in Google slides with place holder text for your desired merge fields.")
+    st.write("- Upload a csv with columns PRECISELY titled whatever you want your merge fields to be.")
+    st.write("- Click 'Generate Images' to begin the image generation and view them in your destination google drive folder.")
 
-st.subheader("Google authentication")
+st.header("Google authentication")
 
 try:
     if st.button("Authenticate Google Account"):
@@ -196,7 +203,7 @@ except Exception as e:
     pass
 
 
-st.subheader("IDs and Doortags")
+st.header("IDs and Doortags")
 
 col1, col2 = st.columns(2)
 
@@ -214,10 +221,7 @@ with col1:
         st.session_state['id'] = False
 
 with col2:
-    program_name = 'STAFF'
-
-    if option =='Intern Door' or option == 'Intern ID':
-        program_name = st.text_input("Intern's Program Name:")
+    slides_temp = st.text_input("Google Slides Template Link")
 
 col1, col2 = st.columns(2)
 
@@ -235,13 +239,7 @@ uploaded_file = st.file_uploader(label="Upload a CSV file for processing", type=
 
 label_button = st.button("Process Tags")
 
-if uploaded_file is not None and program_name and upload_folder_id and images_folder_id and label_button and st.session_state['final_auth']:
-
-
-    if st.session_state['intern'] == True:
-        template_id = '1WKvju3sesXvE--aiwoZWmJYsttV-_H1TYcVxrjSvfY8'
-    else:
-        template_id = '1WKvju3sesXvE--aiwoZWmJYsttV-_H1TYcVxrjSvfY8'
+if uploaded_file is not None and slides_temp and upload_folder_id and images_folder_id and label_button and st.session_state['final_auth']:
 
     # Google Drive service setup
     CLIENT_SECRET_FILE = 'credentials.json'
@@ -276,7 +274,7 @@ if uploaded_file is not None and program_name and upload_folder_id and images_fo
 
     image_paths = []
 
-    generate_pdf(template_id, images_folder_id, upload_folder_id, program_name, uploaded_file)
+    generate_pdf(slides_temp, images_folder_id, upload_folder_id, uploaded_file)
 
 
 
@@ -298,21 +296,23 @@ def extract_id_from_url(url):
 
     return None
 
-st.subheader("Image Generation from a Template")
-
+st.header("Image Generation from a Template")
 col1, col2 = st.columns(2)
 with col1:
     template_url = st.text_input("Google Slides Template URL:")
-with col2:
-    merge_fields = st.text_input("Comma seperated list of merge fields:")
 
-output_url = st.text_input("Output google drive folder URL:")
+with col2:
+    output_url = st.text_input("Output google drive folder URL:")
 
 uploaded_csv = st.file_uploader(label="Upload a CSV file of input data", type=['csv'])
+
+if uploaded_csv:
+    df = pd.read_csv(uploaded_csv)
+    merge_fields = df.columns.tolist()
+    st.write("Merge fields:", ", ".join(merge_fields))
 
 if st.button("Generate Images") and st.session_state['final_auth'] and template_url and merge_fields and uploaded_csv:
     template_id = extract_id_from_url(template_url)
     output_id = extract_id_from_url(output_url)
-    merge_fields_arr = [field.strip() for field in merge_fields.split(',')]
-    generate_images(template_id, output_id, merge_fields_arr, uploaded_csv)
+    generate_images(template_id, output_id, merge_fields, uploaded_csv)
     
