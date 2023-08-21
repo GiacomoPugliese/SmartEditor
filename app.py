@@ -153,7 +153,7 @@ st.caption("By Giacomo Pugliese")
 
 with st.expander("Click to view full directions for this site"):
     st.subheader("Google Authentication")
-    st.write("- Click 'Authenticate Google Account, and then on the generated link.")
+    st.write("- Click 'Authenticate Google Account', and then on the generated link.")
     st.write("- Follow the steps of Google login until you get to the final page.")
     st.write("- Click on 'Finalize Authentication' to proceed to rest of website.")
     st.subheader("IDs and Doortags")
@@ -161,13 +161,13 @@ with st.expander("Click to view full directions for this site"):
     st.write("- Design and upload the link for a template in Google slides for the ID/Doortags with place holder text PRECISELY titled 'name', 'program', 'role' (high school name for interns, job description for staff), 'location', and 'class' (you can omit class column if using a staff template). ")
     st.write("- Upload a csv with columns named containing the placeholder text from the slides template.")
     st.write("- Enter the link of the Google drive folder containing photos that correspond exactly to the rows within the 'name' column.")
-    st.write("- Enter the intended output google drive folder link.")
-    st.write("- Click 'Process Tags' to begin renderings of the chosen template and view the pdf containing them in your destination google drive folder.")
+    st.write("- Enter the intended output Google drive folder link.")
+    st.write("- Click 'Process Tags' to begin renderings of the chosen template and view the pdf containing them in your destination Google drive folder.")
     st.subheader("Image Generation from a Template")
-    st.write("- Enter the intended output google drive folder link.")
+    st.write("- Enter the intended output Google drive folder link.")
     st.write("- Design and upload the link for a template in Google slides with place holder text for your desired merge fields.")
     st.write("- Upload a csv with columns PRECISELY titled whatever you want your merge fields to be.")
-    st.write("- Click 'Generate Images' to begin the image generation and view them in your destination google drive folder.")
+    st.write("- Click 'Generate Images' to begin the image generation and view them in your destination Google drive folder.")
 
 st.header("Google authentication")
 
