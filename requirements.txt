@@ -9,5 +9,4 @@ matplotlib==3.5.1
 numpy==1.23.5
 fpdf==1.7.2
 moviepy==1.0.3
-pyheif==0.10.0
-helper==2.5.0
+pyheif==0.7.1
