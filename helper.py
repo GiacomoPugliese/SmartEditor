@@ -24,7 +24,7 @@ import os
 import subprocess
 import boto3
 import tempfile
-# import pyheif
+import pyheif
 
 # create s3 client
 s3_client = boto3.client('s3', 
