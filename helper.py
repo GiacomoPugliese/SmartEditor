@@ -1,10 +1,6 @@
 # Import necessary libraries
 import streamlit as st
 import pandas as pd
-import shotstack_sdk as shotstack
-from shotstack_sdk.api import edit_api
-from shotstack_sdk.model.template_render import TemplateRender
-from shotstack_sdk.model.merge_field import MergeField
 import requests
 import os
 import shutil
