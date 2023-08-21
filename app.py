@@ -22,7 +22,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 import os
 import subprocess
 import re
-# import pyheif
+import pyheif
 
 
 st.set_page_config(
