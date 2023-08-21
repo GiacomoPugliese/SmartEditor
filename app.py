@@ -26,7 +26,7 @@ import pyheif
 
 
 st.set_page_config(
-    page_title='PhotoEditor',
+    page_title='ImageEditor',
     page_icon='🖼️'
 )   
 hide_streamlit_style = """ <style> #MainMenu {visibility: hidden;} footer {visibility: hidden;} </style> """ 
