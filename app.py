@@ -347,11 +347,11 @@ uploaded_csv = st.file_uploader(label="Upload a CSV file of input data", type=['
 if uploaded_csv:
     df = pd.read_csv(uploaded_csv)
     merge_fields = df.columns.tolist()
-    st.write("Merge fields:", ", ".join(merge_fields))
 
 if st.button("Generate Images") and st.session_state['final_auth'] and template_url and merge_fields and uploaded_csv:
     with st.spinner("Generating images (may take a few minutes)..."):
         template_id = extract_id_from_url(template_url)
         output_id = extract_id_from_url(output_url)
-        generate_images(template_id, output_id, merge_fields, uploaded_csv)
+        generate_images(template_id, output_id, merge_fields, df)
+    st.success("Images successfully generated!")
     
