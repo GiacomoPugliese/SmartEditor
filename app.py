@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from fpdf import FPDF
 import uuid
-from helper import process_row, generate_images, generate_pdf
+from helper import generate_images, generate_pdf
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import os
 import subprocess
