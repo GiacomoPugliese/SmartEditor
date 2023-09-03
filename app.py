@@ -22,7 +22,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 import os
 import subprocess
 import re
-import pyheif
+# import pyheif
 
 
 st.set_page_config(
@@ -207,7 +207,7 @@ with st.expander("Click to view full directions for this site"):
     st.subheader("Image Generation from a Template")
     st.write("- Enter the intended output Google drive folder link.")
     st.write("- Design and upload the link for a template in Google slides with place holder text for your desired merge fields.")
-    st.write("- Upload a csv with columns PRECISELY titled whatever you want your merge fields to be.")
+    st.write("- Upload a Google Sheets URL with columns PRECISELY titled whatever you want your merge fields to be, as well as a column named 'link' where you want the image links to be inserted.")
     st.write("- Click 'Generate Images' to begin the image generation and view them in your destination Google drive folder.")
 
 st.header("Google Authentication")
@@ -334,24 +334,65 @@ if uploaded_file is not None and slides_temp and upload_folder_id and images_fol
 
         generate_pdf(slides_temp, images_folder_id, upload_folder_id, uploaded_file)
 
+def read_google_sheet_to_df(sheet_id):
+    # Google Drive service setup
+    CLIENT_SECRET_FILE = 'credentials.json'
+    API_NAME = 'drive'
+    API_VERSION = 'v3'
+    SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/presentations']
+
+    with open(CLIENT_SECRET_FILE, 'r') as f:
+        client_info = json.load(f)['web']
+
+    creds_dict = st.session_state['creds']
+    creds_dict['client_id'] = client_info['client_id']
+    creds_dict['client_secret'] = client_info['client_secret']
+    creds_dict['refresh_token'] = creds_dict.get('_refresh_token')
+
+    # Create Credentials from creds_dict
+    creds = Credentials.from_authorized_user_info(creds_dict)
+
+    # Initialize the Sheets API client
+    service = build('sheets', 'v4', credentials=creds)
+    sheet = service.spreadsheets()
+
+    # Read the sheet into a DataFrame
+    result = sheet.values().get(spreadsheetId=sheet_id, range="Sheet1").execute()
+    values = result.get('values', [])
+
+    if not values:
+        return pd.DataFrame()
+
+    # Ensure each row has the same length as the header
+    num_columns = len(values[0])
+    for i in range(1, len(values)):
+        len_row = len(values[i])
+        if len_row < num_columns:
+            values[i].extend([''] * (num_columns - len_row))
+
+    # Create a DataFrame
+    df = pd.DataFrame(values[1:], columns=values[0])
+    return df
+    
 st.header("Image Generation from a Template")
 col1, col2 = st.columns(2)
 with col1:
     template_url = st.text_input("Google Slides Template URL:")
 
 with col2:
-    output_url = st.text_input("Output google drive folder URL:")
+    output_url = st.text_input("Output Google Drive folder URL:")
 
-uploaded_csv = st.file_uploader(label="Upload a CSV file of input data", type=['csv'])
+csv_url = st.text_input("Input data Google Sheets URL")
 
-if uploaded_csv:
-    df = pd.read_csv(uploaded_csv)
-    merge_fields = df.columns.tolist()
 
-if st.button("Generate Images") and st.session_state['final_auth'] and template_url and merge_fields and uploaded_csv:
+if st.button("Generate Images") and st.session_state['final_auth'] and template_url and csv_url:
     with st.spinner("Generating images (may take a few minutes)..."):
+        csv_id = extract_id_from_url(csv_url)
+        df = read_google_sheet_to_df(csv_id) 
+        merge_fields = df.columns.tolist()
         template_id = extract_id_from_url(template_url)
         output_id = extract_id_from_url(output_url)
-        generate_images(template_id, output_id, merge_fields, df)
+        print(generate_images(template_id, output_id, merge_fields, df, csv_id))
     st.success("Images successfully generated!")
+
     
