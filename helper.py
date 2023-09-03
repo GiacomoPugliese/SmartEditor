@@ -24,7 +24,7 @@ import os
 import subprocess
 import boto3
 import tempfile
-import pyheif
+# import pyheif
 
 # create s3 client
 s3_client = boto3.client('s3', 
@@ -33,7 +33,7 @@ s3_client = boto3.client('s3',
 bucket_name = 'li-general-tasks'
 
 
-def generate_images(template_id, output_id, merge_fields_arr, df):
+def generate_images(template_id, output_id, merge_fields_arr, df, csv_id):
     # Google Drive service setup
     CLIENT_SECRET_FILE = 'credentials.json'
     API_NAME = 'drive'
@@ -57,8 +57,26 @@ def generate_images(template_id, output_id, merge_fields_arr, df):
     # Build the Google Slides service
     slides_service = build('slides', 'v1', credentials=creds)
 
+    # Build the Google Sheets service
+    sheets_service = build('sheets', 'v4', credentials=creds)
+
+    # Find the column position for 'link'
+    result = sheets_service.spreadsheets().values().get(spreadsheetId=csv_id, range="Sheet1!1:1").execute()
+    headers = result.get('values', [])[0]  # Get the first row
+    link_column = None
+
+    if headers:
+        for i, header in enumerate(headers):
+            if header.lower() == 'link':
+                link_column = chr(65 + i)  # Convert 0-based index to letter (e.g., 0 -> 'A')
+                break
+
+    if link_column is None:
+        return 'Column "link" not found in the Google Sheet.'
+
+
     # Iterate over each row of the DataFrame
-    for _, row in df.iterrows():
+    for index, row in df.iterrows():
         # Make a temporary copy of the template
         body = {'name': 'Temp Copy'}
         copy = drive_service.files().copy(fileId=template_id, body=body).execute()
@@ -96,11 +114,6 @@ def generate_images(template_id, output_id, merge_fields_arr, df):
             print(f"Unexpected content type: {content_type}")
             continue
 
-        name_image = f'Image_{_+1}.jpeg'
-        # Save the image data to a local file for verification
-        with open(name_image, 'wb') as image_file:
-            image_file.write(image_data)
-
         # Upload the JPEG image to the specified Google Drive folder
         media = MediaInMemoryUpload(image_data, mimetype='image/jpeg', resumable=True)
         file_metadata = {'name':  str(row[merge_fields_arr[0]]) + '.jpeg', 'parents': [output_id]}
@@ -108,7 +121,31 @@ def generate_images(template_id, output_id, merge_fields_arr, df):
 
         # Delete the temporary copy
         drive_service.files().delete(fileId=copy_id).execute()
-        os.remove(name_image)
+
+
+        # Make the uploaded image viewable by anyone
+        permission = {
+            'type': 'anyone',
+            'role': 'reader'
+        }
+        drive_service.permissions().create(fileId=uploaded_image['id'], body=permission).execute()
+        
+        # Get the 'webContentLink' of the uploaded image
+        image_info = drive_service.files().get(fileId=uploaded_image['id'], fields='webContentLink').execute()
+        shareable_link = image_info['webContentLink']
+        
+        # Append shareable link to the respective row in Google Sheet
+        update_range = f'Sheet1!{link_column}{index+2}' 
+        update_body = {
+            "values": [[shareable_link]]
+        }
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=csv_id,
+            range=update_range,
+            body=update_body,
+            valueInputOption="RAW"
+        ).execute()
+
     # Return a confirmation message
     return 'Images have been successfully generated and uploaded to the specified Google Drive folder.'
 
