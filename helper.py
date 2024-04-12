@@ -74,7 +74,6 @@ def generate_images(template_id, output_id, merge_fields_arr, df, csv_id):
     if link_column is None:
         return 'Column "link" not found in the Google Sheet.'
 
-
     # Iterate over each row of the DataFrame
     for index, row in df.iterrows():
         # Make a temporary copy of the template
@@ -88,7 +87,7 @@ def generate_images(template_id, output_id, merge_fields_arr, df, csv_id):
             requests_list.append({
                 'replaceAllText': {
                     'containsText': {
-                        'text': field ,
+                        'text': field,
                         'matchCase': False
                     },
                     'replaceText': str(row[field])
@@ -96,46 +95,31 @@ def generate_images(template_id, output_id, merge_fields_arr, df, csv_id):
             })
         slides_service.presentations().batchUpdate(presentationId=copy_id, body={'requests': requests_list}).execute()
 
-        # Export the populated copy as a JPEG image
-        presentation = slides_service.presentations().get(presentationId=copy_id).execute()
-        slide = presentation['slides'][0]
-        slide_id = slide['objectId']
-        thumbnail_info = f"https://slides.googleapis.com/v1/presentations/{copy_id}/pages/{slide_id}/thumbnail?access_token={creds.token}"
-        
-        response = requests.get(thumbnail_info)
-        content_type = response.headers['Content-Type']
+        # Export the populated copy as a PDF
+        request = drive_service.files().export(fileId=copy_id, mimeType='application/pdf')
+        pdf_content = request.execute()
 
-        if content_type == 'application/json; charset=UTF-8':
-            json_response = json.loads(response.text)
-            image_url = json_response['contentUrl']
-            image_data = requests.get(image_url).content
-        else:
-            # Handle different content types here
-            print(f"Unexpected content type: {content_type}")
-            continue
-
-        # Upload the JPEG image to the specified Google Drive folder
-        media = MediaInMemoryUpload(image_data, mimetype='image/jpeg', resumable=True)
-        file_metadata = {'name':  str(row[merge_fields_arr[0]]) + '.jpeg', 'parents': [output_id]}
-        uploaded_image = drive_service.files().create(body=file_metadata, media_body=media).execute()
+        # Upload the PDF file to the specified Google Drive folder
+        media = MediaInMemoryUpload(pdf_content, mimetype='application/pdf', resumable=True)
+        file_metadata = {'name': str(row[merge_fields_arr[0]]) + '.pdf', 'parents': [output_id]}
+        uploaded_pdf = drive_service.files().create(body=file_metadata, media_body=media).execute()
 
         # Delete the temporary copy
         drive_service.files().delete(fileId=copy_id).execute()
 
-
-        # Make the uploaded image viewable by anyone
+        # Make the uploaded PDF viewable by anyone
         permission = {
             'type': 'anyone',
             'role': 'reader'
         }
-        drive_service.permissions().create(fileId=uploaded_image['id'], body=permission).execute()
+        drive_service.permissions().create(fileId=uploaded_pdf['id'], body=permission).execute()
         
-        # Get the 'webContentLink' of the uploaded image
-        image_info = drive_service.files().get(fileId=uploaded_image['id'], fields='webContentLink').execute()
-        shareable_link = image_info['webContentLink']
-        
+        # Get the 'webContentLink' of the uploaded PDF
+        pdf_info = drive_service.files().get(fileId=uploaded_pdf['id'], fields='webContentLink').execute()
+        shareable_link = pdf_info['webContentLink']
+
         # Append shareable link to the respective row in Google Sheet
-        update_range = f'Sheet1!{link_column}{index+2}' 
+        update_range = f'Sheet1!{link_column}{index+2}'
         update_body = {
             "values": [[shareable_link]]
         }
@@ -147,7 +131,7 @@ def generate_images(template_id, output_id, merge_fields_arr, df, csv_id):
         ).execute()
 
     # Return a confirmation message
-    return 'Images have been successfully generated and uploaded to the specified Google Drive folder.'
+    return 'PDFs have been successfully generated and uploaded to the specified Google Drive folder.'
 
 def create_pdf_id(image_paths):
     pdf = FPDF(orientation = "P", unit = "mm", format = "A4")
