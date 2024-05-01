@@ -123,7 +123,7 @@ s3_client = boto3.client('s3',
 bucket_name = 'li-general-task'
 
 def reset_s3():
-    # Set AWS details (replace with your own details)
+    # Set AWS details (replace with your own details).
     AWS_REGION_NAME = 'us-east-2'
     AWS_ACCESS_KEY = 'AKIARK3QQWNWXGIGOFOH'
     AWS_SECRET_KEY = 'ClAUaloRIp3ebj9atw07u/o3joULLY41ghDiDc2a'
