@@ -120,7 +120,7 @@ s3_client = boto3.client('s3',
                          aws_access_key_id='AKIARK3QQWNWXGIGOFOH',
                          aws_secret_access_key='ClAUaloRIp3ebj9atw07u/o3joULLY41ghDiDc2a')
 
-bucket_name = 'li-general-tasks'
+bucket_name = 'li-general-task'
 
 def reset_s3():
     # Set AWS details (replace with your own details)
@@ -135,16 +135,16 @@ def reset_s3():
         aws_secret_access_key=AWS_SECRET_KEY
     )
 
-    # Delete objects within subdirectories in the bucket 'li-general-tasks'
+    # Delete objects within subdirectories in the bucket 'li-general-task'
     subdirs = ['input_videos/', 'output_videos/', 'images/']
     for subdir in subdirs:
-        objects = s3.list_objects_v2(Bucket='li-general-tasks', Prefix=subdir)
+        objects = s3.list_objects_v2(Bucket='li-general-task', Prefix=subdir)
         for obj in objects.get('Contents', []):
             if obj['Key'] != 'input_videos/outro.mp4':
-                s3.delete_object(Bucket='li-general-tasks', Key=obj['Key'])
+                s3.delete_object(Bucket='li-general-task', Key=obj['Key'])
                 
         # Add a placeholder object to represent the "directory"
-        s3.put_object(Bucket='li-general-tasks', Key=subdir)
+        s3.put_object(Bucket='li-general-task', Key=subdir)
 
 def set_link_sharing(file_id, drive_service):
     try:

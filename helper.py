@@ -30,7 +30,7 @@ import tempfile
 s3_client = boto3.client('s3', 
                          aws_access_key_id='AKIARK3QQWNWXGIGOFOH',
                          aws_secret_access_key='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')
-bucket_name = 'li-general-tasks'
+bucket_name = 'li-general-task'
 
 
 def generate_images(template_id, output_id, merge_fields_arr, df, csv_id):
@@ -212,7 +212,7 @@ def upload_to_s3(local_image_path, image_name):
     AWS_REGION_NAME = 'us-east-2'
     AWS_ACCESS_KEY = 'AKIARK3QQWNWXGIGOFOH'
     AWS_SECRET_KEY = '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'
-    BUCKET_NAME = 'li-general-tasks'
+    BUCKET_NAME = 'li-general-task'
     S3_INPUT_PREFIX = 'input_videos/'
 
     # Initialize the S3 client
